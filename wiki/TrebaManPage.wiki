@@ -244,7 +244,7 @@ treba(1)                                                              treba(1)
 
 </pre>
 <h2>SEE ALSO</h2><pre>
-       de  la Higuera, C. (2010). Grammatical Inference: Learning Automata and
+      de  la Higuera, C. (2010). Grammatical Inference: Learning Automata and
        Grammars.  Cambridge University Press.
 
        Dempster, A., N. Laird, and D. Rubin. (1977). Maximum likelihood  esti-
