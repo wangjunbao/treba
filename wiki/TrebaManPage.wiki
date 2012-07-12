@@ -125,7 +125,7 @@ treba(1)                                                              treba(1)
        -g type
               Generate  an  initial  automaton of type type for training.  The
               type is a combination of an option letter and the number of states 
-and the alphabet of the format b|d|n#states(,#numsymbols)
+              and the alphabet of the format b|d|n#states(,#numsymbols)
               Here, b will generate a Bakis  (left-to-right)  automaton,  d  a
               deterministic  automaton, and n a fully connected (ergodic) non-
               deterministic automaton.  If numsymbols is omitted,  the  neces-
