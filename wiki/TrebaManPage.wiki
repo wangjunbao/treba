@@ -1,6 +1,6 @@
 #labels Featured
 <pre>
-*treba(1)*                                                              *treba(1)*
+treba(1)                                                              treba(1)
 
 
 
@@ -12,12 +12,12 @@
 
 </pre>
 <h2>SYNOPSIS</h2><pre>
-       *treba* *[options]* *[* _OBSERVATIONS-FILE_ *]*
+       treba [options] [ OBSERVATIONS-FILE ]
 
 
 </pre>
 <h2>DESCRIPTION</h2><pre>
-       *treba*  is  a tool for training, decoding, and calculating with weighted
+       treba  is  a tool for training, decoding, and calculating with weighted
        (probabilistic) finite state  automata.   Training  algorithms  include
        Baum-Welch (EM), Viterbi training, and Baum-Welch augmented with deter-
        ministic annealing.  Training algorithms can be run  multi-threaded  on
@@ -34,9 +34,9 @@
 
 </pre>
 <h2>BASIC OPTIONS</h2><pre>
-       The program has four main modes of operation: training (the  *-T*  flag),
-       decoding  (the  *-D*  flag),  likelihood  calculation  (the *-L* flag), and
-       sequence generation (the *-G* flag).  All modes except generation  depend
+       The program has four main modes of operation: training (the  -T  flag),
+       decoding  (the  -D  flag),  likelihood  calculation  (the -L flag), and
+       sequence generation (the -G flag).  All modes except generation  depend
        on  an observations file and possibly a finite-state automaton file (if
        not initialized randomly for training).  The  observations  file  is  a
        text  file  and is assumed to consist of whitespace-separated sequences
@@ -50,52 +50,52 @@
        be one probability for each line in the observations file.
 
 
-       *-T* *bw|dabw|vit|vitbw*
-              Train  a  model with one of the four algorithms *bw* (Baum-Welch),
-              *dabw* (Baum-Welch with  deterministic  annealing),  *vit*  (Viterbi
-              training), or *vitbw* (Viterbi training followed by Baum-Welch).
+       -T bw|dabw|vit|vitbw
+              Train  a  model with one of the four algorithms bw (Baum-Welch),
+              dabw (Baum-Welch with  deterministic  annealing),  vit  (Viterbi
+              training), or vitbw (Viterbi training followed by Baum-Welch).
 
-       *-D* *f|b|vit(,p)*
+       -D f|b|vit(,p)
               Decode  (find the best path) through the automaton for each word
-              in obervation-file using either the forward path (  *f*  )  ,  the
-              backward  path ( *b* ), or the Viterbi path ( *vit* ).  The optional
-              *,p* will also print out the respective probability together  with
+              in obervation-file using either the forward path (  f  )  ,  the
+              backward  path ( b ), or the Viterbi path ( vit ).  The optional
+              ,p will also print out the respective probability together  with
               the  path.   Note that forward and backward decoding chooses the
               most probable state for each point in time and so the  path  may
               or  may  not correspond to an actually valid path in the automa-
-              ton.  For example, *-D* *vit,p* will calculate the Viterbi path  and
+              ton.  For example, -D vit,p will calculate the Viterbi path  and
               print its probability.
 
-       *-L* *f|vit*
+       -L f|vit
               Calculate  the  likelihood (probability) for each observation in
               observation-file using forward probability, or the Viterbi prob-
               ability.
 
-       *-G* _numsequences_
-              Generate  _numsequences_ random sequences from FSA.  Randomness is
+       -G numsequences
+              Generate  numsequences random sequences from FSA.  Randomness is
               weighted by transition probabilities.  The sequences are  output
               in three TAB-separated fields: (1) the sequence probability; (2)
               the symbol sequence itself; (3) the state sequence.
 
 
-       *-i* _input-format_
+       -i input-format
               Set format of probabilities in input automata (real  numbers  or
-              logs or negative logs in various bases), one of *real,* *log10,* *ln,*
-              *log2,* *nlog10,* *nln,* *nlog2.*  Default is *real.*
+              logs or negative logs in various bases), one of real, log10, ln,
+              log2, nlog10, nln, nlog2.  Default is real.
 
-       *-o* _output-format_
+       -o output-format
               Set format  of  probabilities  related  to  output  automata  or
               results of decoding and likelihood calculations (real numbers or
-              logs or negative logs in various bases), one of *real,* *log10,* *ln,*
-              *log2,* *nlog10,* *nln,* *nlog2.*  Default is *real.*
+              logs or negative logs in various bases), one of real, log10, ln,
+              log2, nlog10, nln, nlog2.  Default is real.
 
-       *-f* _fsm-file_
+       -f fsm-file
               Specify finite state automaton file.  Each line in the automaton
               file consists of one to four numbers: a four-number line S1 S2 A
-              P  indicates a transition from S1 to S2 with symbol _A_ and proba-
-              bility _P_ whereas a line of the format S P  indicates  the  final
-              probability  at  state _S._  Three-number and one-number lines are
-              identical to the above, with an implicit probabibility _P_ of one.
+              P  indicates a transition from S1 to S2 with symbol A and proba-
+              bility P whereas a line of the format S P  indicates  the  final
+              probability  at  state S.  Three-number and one-number lines are
+              identical to the above, with an implicit probabibility P of one.
               The initial state is always state number 0.  The format is iden-
               tical to the text formats accepted by the AT&amp;T  FSM  toolkit  or
               OpenFST, with the exception that strings are not allowed to rep-
@@ -122,67 +122,67 @@
 
 
 
-       *-g* _type_
-              Generate  an  initial  automaton of type _type_ for training.  The
+       -g type
+              Generate  an  initial  automaton of type type for training.  The
               type is a combination of an option letter and the number of  the
-              states and the alphabet of the format *b|d|n#states(,#numsymbols)*
-              Here, *b* will generate a Bakis  (left-to-right)  automaton,  *d*  a
-              deterministic  automaton, and *n* a fully connected (ergodic) non-
-              deterministic automaton.  If *numsymbols* is omitted,  the  neces-
+              states and the alphabet of the format b|d|n#states(,#numsymbols)
+              Here, b will generate a Bakis  (left-to-right)  automaton,  d  a
+              deterministic  automaton, and n a fully connected (ergodic) non-
+              deterministic automaton.  If numsymbols is omitted,  the  neces-
               sary  alphabet  size  will be deduced from the observation file.
-              For example, *-n20,10* will generate an  initial  fully  connected
-              random automaton with 20 states and 10 symbols whereas *-b10* will
+              For example, -n20,10 will generate an  initial  fully  connected
+              random automaton with 20 states and 10 symbols whereas -b10 will
               generate a Bakis automaton with 10 states, and the alphabet size
               is deduced from the largest symbol in the observations file.
 
-       *-u*     This  option  sets  all initially generated automata with the *-g*
+       -u     This  option  sets  all initially generated automata with the -g
               option  to  have  uniform  probabilities  instead  of   randomly
               assigned ones.
 
-       *-h*     print help and exit
+       -h     print help and exit
 
-       *-v*     print version and exit
+       -v     print version and exit
 
 
 
 </pre>
 <h2>TRAINING OPTIONS</h2><pre>
-       *-d* _max-delta_
+       -d max-delta
               Maximum  delta (change in log likelihood between training itera-
               tions) to use for convergence.  Default is 0.1.  Note that treba
               will output the result of training calculations so far if CTRL-C
               is pressed without the need to wait for convergence.
 
-       *-x* _maxiterations_
+       -x maxiterations
               Maximum number of iterations in training.   Default  is  100000.
               Note  that treba will output the result of training calculations
               so far if CTRL-C is pressed without the need to wait for conver-
               gence.
 
-       *-p* _pseudocounts_
+       -p pseudocounts
               Pseudocounts  to  use  in  Viterbi  training to prevent paths of
               probability zero. Default value is 1.
 
-       *-r* *restarts,iterations-per-restart*
-              Sets Baum-Welch to restart itself  *restarts*  times  running  for
-              *iterations-per-restart*  iterations each restart.  After all ran-
+       -r restarts,iterations-per-restart
+              Sets Baum-Welch to restart itself  restarts  times  running  for
+              iterations-per-restart  iterations each restart.  After all ran-
               dom restarts have been run, the fsm with the best log likelihood
               is chosen and Baum-Welch proceeds as normal.
 
 
-       *-a* *betamin,betamax,alpha*
+       -a betamin,betamax,alpha
               Controls  the  parameters  for  deterministic annealing when run
-              with *-T* *dabw* setting the initial beta value to *betamin,* the max-
-              imum  beta  value  to  *betamax* and the multiplier *alpha* by which
+              with -T dabw setting the initial beta value to betamin, the max-
+              imum  beta  value  to  betamax and the multiplier alpha by which
               beta in increased each time Baum-Welch converges.   The  default
               values are 0.02, 1.0, and 1.01.
 
-       *-t* _num-threads_
+       -t num-threads
               Number  of  threads to launch in Baum-Welch training.  The value
-              *num-threads* can be optionally prefixed by *c* or  *c/*  to  use  *c-n*
-              threads or *c/n* threads, where *c* is the number of logical CPUs on
+              num-threads can be optionally prefixed by c or  c/  to  use  c-n
+              threads or c/n threads, where c is the number of logical CPUs on
               the system.  To use half  the  available  processors  one  would
-              issue  the  flag *-t* *c/2* and likewise *-t* *c1* to use all but one of
+              issue  the  flag -t c/2 and likewise -t c1 to use all but one of
               the available CPUs/cores. Default value is 1.
 
 
@@ -252,24 +252,24 @@
        Statistical Society B, 39:1-38.
 
        Rabiner, L. R. (1989). A tutorial on Hidden Markov Models and  selected
-       applications  in speech recognition.  Proc. of the IEEE, *77(2)*:257-286.
+       applications  in speech recognition.  Proc. of the IEEE, 77(2):257-286.
 
        Rao, A. and K. Rose. (2001). Deterministically annealed design of  Hid-
        den  Markov  Model  speech recognizers. IEEE Transactions on Speech and
-       Audio Processing, *9(2)*:111-126.
+       Audio Processing, 9(2):111-126.
 
        Rose, K. (1998). Deterministic annealing for  clustering,  compression,
        classification, regression, and related optimization problems. Proc. of
-       the IEEE, *86(11)*:2210-2239.
+       the IEEE, 86(11):2210-2239.
 
        Ueda, N. and Nakano, R. (1998). Deterministic annealing  EM  algorithm.
-       Neural Networks, *11(2)*:271-282.
+       Neural Networks, 11(2):271-282.
 
        Smith,  N.  A. and Eisner, J. (2004). Annealing techniques for unsuper-
        vised statistical  language  learning.  In  Proc.  of  the  ACL,  pages
        486-493.
 
-       *fsm(1)*
+       fsm(1)
 
 
 
@@ -281,10 +281,10 @@
 
 </pre>
 <h2>AUTHOR</h2><pre>
-       Mans Hulden &lt;mans.hulden@gmail.com&gt;
+       Mans Hulden <mans.hulden@gmail.com>
 
 
 
-                                 July 9, 2012                         *treba(1)*
+                                 July 9, 2012                         treba(1)
 </pre>
 <hr>
