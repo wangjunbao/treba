@@ -56,7 +56,7 @@ treba(1)                                                              treba(1)
               training), or vitbw (Viterbi training followed by Baum-Welch).
 
        -D f|b|vit(,p)
-              Decode  (find the best path) through the automaton for each word
+              Decode  (find the best path through) the automaton for each word
               in obervation-file using either the forward path (  f  )  ,  the
               backward  path ( b ), or the Viterbi path ( vit ).  The optional
               ,p will also print out the respective probability together  with
@@ -124,8 +124,7 @@ treba(1)                                                              treba(1)
 
        -g type
               Generate  an  initial  automaton of type type for training.  The
-              type is a combination of an option letter and the number of  the
-              states and the alphabet of the format b|d|n#states(,#numsymbols)
+              type is a combination of an option letter and the number of states and the alphabet of the format b|d|n#states(,#numsymbols)
               Here, b will generate a Bakis  (left-to-right)  automaton,  d  a
               deterministic  automaton, and n a fully connected (ergodic) non-
               deterministic automaton.  If numsymbols is omitted,  the  neces-
@@ -163,8 +162,8 @@ treba(1)                                                              treba(1)
               Pseudocounts  to  use  in  Viterbi  training to prevent paths of
               probability zero. Default value is 1.
 
-       -r restarts,iterations-per-restart
-              Sets Baum-Welch to restart itself  restarts  times  running  for
+       -r restart,iterations-per-restart
+              Sets Baum-Welch to restart itself  restart  times  running  for
               iterations-per-restart  iterations each restart.  After all ran-
               dom restarts have been run, the fsm with the best log likelihood
               is chosen and Baum-Welch proceeds as normal.
@@ -174,7 +173,7 @@ treba(1)                                                              treba(1)
               Controls  the  parameters  for  deterministic annealing when run
               with -T dabw setting the initial beta value to betamin, the max-
               imum  beta  value  to  betamax and the multiplier alpha by which
-              beta in increased each time Baum-Welch converges.   The  default
+              beta is increased each time Baum-Welch converges.   The  default
               values are 0.02, 1.0, and 1.01.
 
        -t num-threads
@@ -192,7 +191,7 @@ treba(1)                                                              treba(1)
               Reads all the sentences from sentences.txt and trains a 10-state
               probabilistic  automaton  using  Baum-Welch  using  the  default
               training parameters.  The initial automaton has random probabil-
-              ities on its transitions and fully connected.
+              ities on its transitions and is fully connected.
 
        treba -T bw -t c/2 -g b100 sentences.txt
               Reads   all  the  sentences  from  sentences.txt  and  trains  a
