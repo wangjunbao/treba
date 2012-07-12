@@ -1,6 +1,5 @@
 #summary Man page for treba.
 #labels Featured
-
 <PRE>
 <B>treba(1)</B>                                                              <B>treba(1)</B>
 
