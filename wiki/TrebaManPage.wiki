@@ -97,7 +97,7 @@ treba(1)                                                              treba(1)
               probability  at  state S.  Three-number and one-number lines are
               identical to the above, with an implicit probabibility P of one.
               The initial state is always state number 0.  The format is iden-
-              tical to the text formats accepted by the AT&amp;T  FSM  toolkit  or
+              tical to the text formats accepted by the AT&T  FSM  toolkit  or
               OpenFST, with the exception that strings are not allowed to rep-
               resent symbols or states: all symbols  and  states  need  to  be
               integers.
@@ -235,7 +235,7 @@ treba(1)                                                              treba(1)
               No  real  action: myfsm.fsm is read (inputs are real-valued) and
               converted to negative logprobs (aka weights) with the base e and
               output  to  stdout.   This can be used to export an FSA for pro-
-              cessing with e.g. the AT&amp;T tools or OpenFST.  Not issuing any of
+              cessing with e.g. the AT&T tools or OpenFST.  Not issuing any of
               the  flags  -T, -D or -L, will simply output the input FSA, per-
               forming a possible conversion depending on the input and  output
               specifiers.
