@@ -1,24 +1,23 @@
-#summary Man page for treba.
 #labels Featured
-<PRE>
-<B>treba(1)</B>                                                              <B>treba(1)</B>
+<pre>
+<b>treba(1)</b>                                                              <b>treba(1)</b>
 
 
 
 
-</PRE>
-<H2>NAME</H2><PRE>
+</pre>
+<h2>NAME</h2><pre>
        treba - probabilistic finite-state automaton training and decoding
 
 
-</PRE>
-<H2>SYNOPSIS</H2><PRE>
-       <B>treba</B> <B>[options]</B> <B>[</B> <I>OBSERVATIONS-FILE</I> <B>]</B>
+</pre>
+<h2>SYNOPSIS</h2><pre>
+       <b>treba</b> <b>[options]</b> <b>[</b> <i>OBSERVATIONS-FILE</i> <b>]</b>
 
 
-</PRE>
-<H2>DESCRIPTION</H2><PRE>
-       <B>treba</B>  is  a tool for training, decoding, and calculating with weighted
+</pre>
+<h2>DESCRIPTION</h2><pre>
+       <b>treba</b>  is  a tool for training, decoding, and calculating with weighted
        (probabilistic) finite state  automata.   Training  algorithms  include
        Baum-Welch (EM), Viterbi training, and Baum-Welch augmented with deter-
        ministic annealing.  Training algorithms can be run  multi-threaded  on
@@ -33,11 +32,11 @@
 
 
 
-</PRE>
-<H2>BASIC OPTIONS</H2><PRE>
-       The program has four main modes of operation: training (the  <B>-T</B>  flag),
-       decoding  (the  <B>-D</B>  flag),  likelihood  calculation  (the <B>-L</B> flag), and
-       sequence generation (the <B>-G</B> flag).  All modes except generation  depend
+</pre>
+<h2>BASIC OPTIONS</h2><pre>
+       The program has four main modes of operation: training (the  <b>-T</b>  flag),
+       decoding  (the  <b>-D</b>  flag),  likelihood  calculation  (the <b>-L</b> flag), and
+       sequence generation (the <b>-G</b> flag).  All modes except generation  depend
        on  an observations file and possibly a finite-state automaton file (if
        not initialized randomly for training).  The  observations  file  is  a
        text  file  and is assumed to consist of whitespace-separated sequences
@@ -51,52 +50,52 @@
        be one probability for each line in the observations file.
 
 
-       <B>-T</B> <B>bw|dabw|vit|vitbw</B>
-              Train  a  model with one of the four algorithms <B>bw</B> (Baum-Welch),
-              <B>dabw</B> (Baum-Welch with  deterministic  annealing),  <B>vit</B>  (Viterbi
-              training), or <B>vitbw</B> (Viterbi training followed by Baum-Welch).
+       <b>-T</b> <b>bw|dabw|vit|vitbw</b>
+              Train  a  model with one of the four algorithms <b>bw</b> (Baum-Welch),
+              <b>dabw</b> (Baum-Welch with  deterministic  annealing),  <b>vit</b>  (Viterbi
+              training), or <b>vitbw</b> (Viterbi training followed by Baum-Welch).
 
-       <B>-D</B> <B>f|b|vit(,p)</B>
+       <b>-D</b> <b>f|b|vit(,p)</b>
               Decode  (find the best path) through the automaton for each word
-              in obervation-file using either the forward path (  <B>f</B>  )  ,  the
-              backward  path ( <B>b</B> ), or the Viterbi path ( <B>vit</B> ).  The optional
-              <B>,p</B> will also print out the respective probability together  with
+              in obervation-file using either the forward path (  <b>f</b>  )  ,  the
+              backward  path ( <b>b</b> ), or the Viterbi path ( <b>vit</b> ).  The optional
+              <b>,p</b> will also print out the respective probability together  with
               the  path.   Note that forward and backward decoding chooses the
               most probable state for each point in time and so the  path  may
               or  may  not correspond to an actually valid path in the automa-
-              ton.  For example, <B>-D</B> <B>vit,p</B> will calculate the Viterbi path  and
+              ton.  For example, <b>-D</b> <b>vit,p</b> will calculate the Viterbi path  and
               print its probability.
 
-       <B>-L</B> <B>f|vit</B>
+       <b>-L</b> <b>f|vit</b>
               Calculate  the  likelihood (probability) for each observation in
               observation-file using forward probability, or the Viterbi prob-
               ability.
 
-       <B>-G</B> <I>numsequences</I>
-              Generate  <I>numsequences</I> random sequences from FSA.  Randomness is
+       <b>-G</b> <i>numsequences</i>
+              Generate  <i>numsequences</i> random sequences from FSA.  Randomness is
               weighted by transition probabilities.  The sequences are  output
               in three TAB-separated fields: (1) the sequence probability; (2)
               the symbol sequence itself; (3) the state sequence.
 
 
-       <B>-i</B> <I>input-format</I>
+       <b>-i</b> <i>input-format</i>
               Set format of probabilities in input automata (real  numbers  or
-              logs or negative logs in various bases), one of <B>real,</B> <B>log10,</B> <B>ln,</B>
-              <B>log2,</B> <B>nlog10,</B> <B>nln,</B> <B>nlog2.</B>  Default is <B>real.</B>
+              logs or negative logs in various bases), one of <b>real,</b> <b>log10,</b> <b>ln,</b>
+              <b>log2,</b> <b>nlog10,</b> <b>nln,</b> <b>nlog2.</b>  Default is <b>real.</b>
 
-       <B>-o</B> <I>output-format</I>
+       <b>-o</b> <i>output-format</i>
               Set format  of  probabilities  related  to  output  automata  or
               results of decoding and likelihood calculations (real numbers or
-              logs or negative logs in various bases), one of <B>real,</B> <B>log10,</B> <B>ln,</B>
-              <B>log2,</B> <B>nlog10,</B> <B>nln,</B> <B>nlog2.</B>  Default is <B>real.</B>
+              logs or negative logs in various bases), one of <b>real,</b> <b>log10,</b> <b>ln,</b>
+              <b>log2,</b> <b>nlog10,</b> <b>nln,</b> <b>nlog2.</b>  Default is <b>real.</b>
 
-       <B>-f</B> <I>fsm-file</I>
+       <b>-f</b> <i>fsm-file</i>
               Specify finite state automaton file.  Each line in the automaton
               file consists of one to four numbers: a four-number line S1 S2 A
-              P  indicates a transition from S1 to S2 with symbol <I>A</I> and proba-
-              bility <I>P</I> whereas a line of the format S P  indicates  the  final
-              probability  at  state <I>S.</I>  Three-number and one-number lines are
-              identical to the above, with an implicit probabibility <I>P</I> of one.
+              P  indicates a transition from S1 to S2 with symbol <i>A</i> and proba-
+              bility <i>P</i> whereas a line of the format S P  indicates  the  final
+              probability  at  state <i>S.</i>  Three-number and one-number lines are
+              identical to the above, with an implicit probabibility <i>P</i> of one.
               The initial state is always state number 0.  The format is iden-
               tical to the text formats accepted by the AT&amp;T  FSM  toolkit  or
               OpenFST, with the exception that strings are not allowed to rep-
@@ -123,72 +122,72 @@
 
 
 
-       <B>-g</B> <I>type</I>
-              Generate  an  initial  automaton of type <I>type</I> for training.  The
+       <b>-g</b> <i>type</i>
+              Generate  an  initial  automaton of type <i>type</i> for training.  The
               type is a combination of an option letter and the number of  the
-              states and the alphabet of the format <B>b|d|n#states(,#numsymbols)</B>
-              Here, <B>b</B> will generate a Bakis  (left-to-right)  automaton,  <B>d</B>  a
-              deterministic  automaton, and <B>n</B> a fully connected (ergodic) non-
-              deterministic automaton.  If <B>numsymbols</B> is omitted,  the  neces-
+              states and the alphabet of the format <b>b|d|n#states(,#numsymbols)</b>
+              Here, <b>b</b> will generate a Bakis  (left-to-right)  automaton,  <b>d</b>  a
+              deterministic  automaton, and <b>n</b> a fully connected (ergodic) non-
+              deterministic automaton.  If <b>numsymbols</b> is omitted,  the  neces-
               sary  alphabet  size  will be deduced from the observation file.
-              For example, <B>-n20,10</B> will generate an  initial  fully  connected
-              random automaton with 20 states and 10 symbols whereas <B>-b10</B> will
+              For example, <b>-n20,10</b> will generate an  initial  fully  connected
+              random automaton with 20 states and 10 symbols whereas <b>-b10</b> will
               generate a Bakis automaton with 10 states, and the alphabet size
               is deduced from the largest symbol in the observations file.
 
-       <B>-u</B>     This  option  sets  all initially generated automata with the <B>-g</B>
+       <b>-u</b>     This  option  sets  all initially generated automata with the <b>-g</b>
               option  to  have  uniform  probabilities  instead  of   randomly
               assigned ones.
 
-       <B>-h</B>     print help and exit
+       <b>-h</b>     print help and exit
 
-       <B>-v</B>     print version and exit
+       <b>-v</b>     print version and exit
 
 
 
-</PRE>
-<H2>TRAINING OPTIONS</H2><PRE>
-       <B>-d</B> <I>max-delta</I>
+</pre>
+<h2>TRAINING OPTIONS</h2><pre>
+       <b>-d</b> <i>max-delta</i>
               Maximum  delta (change in log likelihood between training itera-
               tions) to use for convergence.  Default is 0.1.  Note that treba
               will output the result of training calculations so far if CTRL-C
               is pressed without the need to wait for convergence.
 
-       <B>-x</B> <I>maxiterations</I>
+       <b>-x</b> <i>maxiterations</i>
               Maximum number of iterations in training.   Default  is  100000.
               Note  that treba will output the result of training calculations
               so far if CTRL-C is pressed without the need to wait for conver-
               gence.
 
-       <B>-p</B> <I>pseudocounts</I>
+       <b>-p</b> <i>pseudocounts</i>
               Pseudocounts  to  use  in  Viterbi  training to prevent paths of
               probability zero. Default value is 1.
 
-       <B>-r</B> <B>restarts,iterations-per-restart</B>
-              Sets Baum-Welch to restart itself  <B>restarts</B>  times  running  for
-              <B>iterations-per-restart</B>  iterations each restart.  After all ran-
+       <b>-r</b> <b>restarts,iterations-per-restart</b>
+              Sets Baum-Welch to restart itself  <b>restarts</b>  times  running  for
+              <b>iterations-per-restart</b>  iterations each restart.  After all ran-
               dom restarts have been run, the fsm with the best log likelihood
               is chosen and Baum-Welch proceeds as normal.
 
 
-       <B>-a</B> <B>betamin,betamax,alpha</B>
+       <b>-a</b> <b>betamin,betamax,alpha</b>
               Controls  the  parameters  for  deterministic annealing when run
-              with <B>-T</B> <B>dabw</B> setting the initial beta value to <B>betamin,</B> the max-
-              imum  beta  value  to  <B>betamax</B> and the multiplier <B>alpha</B> by which
+              with <b>-T</b> <b>dabw</b> setting the initial beta value to <b>betamin,</b> the max-
+              imum  beta  value  to  <b>betamax</b> and the multiplier <b>alpha</b> by which
               beta in increased each time Baum-Welch converges.   The  default
               values are 0.02, 1.0, and 1.01.
 
-       <B>-t</B> <I>num-threads</I>
+       <b>-t</b> <i>num-threads</i>
               Number  of  threads to launch in Baum-Welch training.  The value
-              <B>num-threads</B> can be optionally prefixed by <B>c</B> or  <B>c/</B>  to  use  <B>c-n</B>
-              threads or <B>c/n</B> threads, where <B>c</B> is the number of logical CPUs on
+              <b>num-threads</b> can be optionally prefixed by <b>c</b> or  <b>c/</b>  to  use  <b>c-n</b>
+              threads or <b>c/n</b> threads, where <b>c</b> is the number of logical CPUs on
               the system.  To use half  the  available  processors  one  would
-              issue  the  flag <B>-t</B> <B>c/2</B> and likewise <B>-t</B> <B>c1</B> to use all but one of
+              issue  the  flag <b>-t</b> <b>c/2</b> and likewise <b>-t</b> <b>c1</b> to use all but one of
               the available CPUs/cores. Default value is 1.
 
 
-</PRE>
-<H2>EXAMPLE USAGE</H2><PRE>
+</pre>
+<h2>EXAMPLE USAGE</h2><pre>
        treba -T bw -g n10 sentences.txt
               Reads all the sentences from sentences.txt and trains a 10-state
               probabilistic  automaton  using  Baum-Welch  using  the  default
@@ -243,8 +242,8 @@
 
 
 
-</PRE>
-<H2>SEE ALSO</H2><PRE>
+</pre>
+<h2>SEE ALSO</h2><pre>
        de  la Higuera, C. (2010). Grammatical Inference: Learning Automata and
        Grammars.  Cambridge University Press.
 
@@ -253,43 +252,39 @@
        Statistical Society B, 39:1-38.
 
        Rabiner, L. R. (1989). A tutorial on Hidden Markov Models and  selected
-       applications  in speech recognition.  Proc. of the IEEE, <B>77(2)</B>:257-286.
+       applications  in speech recognition.  Proc. of the IEEE, <b>77(2)</b>:257-286.
 
        Rao, A. and K. Rose. (2001). Deterministically annealed design of  Hid-
        den  Markov  Model  speech recognizers. IEEE Transactions on Speech and
-       Audio Processing, <B>9(2)</B>:111-126.
+       Audio Processing, <b>9(2)</b>:111-126.
 
        Rose, K. (1998). Deterministic annealing for  clustering,  compression,
        classification, regression, and related optimization problems. Proc. of
-       the IEEE, <B>86(11)</B>:2210-2239.
+       the IEEE, <b>86(11)</b>:2210-2239.
 
        Ueda, N. and Nakano, R. (1998). Deterministic annealing  EM  algorithm.
-       Neural Networks, <B>11(2)</B>:271-282.
+       Neural Networks, <b>11(2)</b>:271-282.
 
        Smith,  N.  A. and Eisner, J. (2004). Annealing techniques for unsuper-
        vised statistical  language  learning.  In  Proc.  of  the  ACL,  pages
        486-493.
 
-       <B>fsm(1)</B>
+       <b>fsm(1)</b>
 
 
 
-</PRE>
-<H2>BUGS</H2><PRE>
+</pre>
+<h2>BUGS</h2><pre>
        Many and hairy. This is academic code. Don't build Mars rovers with it.
 
 
 
-</PRE>
-<H2>AUTHOR</H2><PRE>
+</pre>
+<h2>AUTHOR</h2><pre>
        Mans Hulden &lt;mans.hulden@gmail.com&gt;
 
 
 
-                                 July 9, 2012                         <B>treba(1)</B>
-</PRE>
-<HR>
-<ADDRESS>
-Man(1) output converted with
-<a href="http://www.oac.uci.edu/indiv/ehood/man2html.html">man2html</a>
-</ADDRESS>
+                                 July 9, 2012                         <b>treba(1)</b>
+</pre>
+<hr>
