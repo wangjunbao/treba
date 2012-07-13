@@ -1,0 +1,18 @@
+This is treba, v.0.1.
+
+Treba is a basic command-line tool for training, decoding, and calculating with weighted (probabilistic) finite state automata (PFSA). It
+
+* trains PFSA, decodes, calculates sequence probabilities and generates sequences of PFSA.
+* includes a parallel implementation of PFSA training with Baum-Welch (optionally with deterministic annealing) for multiple CPUs/cores.
+* uses a simple text format compatible with AT&T finite-state tools or OpenFST.
+
+== INSTALLING ==
+
+For installing instructions, see the INSTALL file.
+
+For more documentation, see 
+
+  * http://code.google.com/p/treba/
+  * the man page in the man/ directory
+
+Author: Mans Hulden <mans.hulden@gmail.com>
