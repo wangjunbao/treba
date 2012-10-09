@@ -17,20 +17,22 @@
 /*   along with treba.  If not, see <http://www.gnu.org/licenses/>.       */
 /**************************************************************************/
 
-#define LIKELIHOOD_FORWARD    1
-#define LIKELIHOOD_BACKWARD   2
-#define LIKELIHOOD_VITERBI    3
-#define DECODE_FORWARD        4
-#define DECODE_BACKWARD       5
-#define DECODE_VITERBI        6
-#define DECODE_FORWARD_PROB   7
-#define DECODE_BACKWARD_PROB  8
-#define DECODE_VITERBI_PROB   9
-#define TRAIN_BAUM_WELCH      10
-#define TRAIN_DA_BAUM_WELCH   11
-#define TRAIN_VITERBI         12
-#define TRAIN_VITERBI_BW      13
-#define GENERATE_WORDS        14
+#define LIKELIHOOD_FORWARD      1
+#define LIKELIHOOD_BACKWARD     2
+#define LIKELIHOOD_VITERBI      3
+#define DECODE_FORWARD          4
+#define DECODE_BACKWARD         5
+#define DECODE_VITERBI          6
+#define DECODE_FORWARD_PROB     7
+#define DECODE_BACKWARD_PROB    8
+#define DECODE_VITERBI_PROB     9
+#define TRAIN_BAUM_WELCH        10
+#define TRAIN_DA_BAUM_WELCH     11
+#define TRAIN_VITERBI           12
+#define TRAIN_VITERBI_BW        13
+#define TRAIN_VARIATIONAL_BAYES 14
+#define TRAIN_GIBBS_SAMPLING    15
+#define GENERATE_WORDS          16
 
 #define GENERATE_NONDETERMINISTIC 1
 #define GENERATE_DETERMINISTIC    2
@@ -68,12 +70,11 @@
 #define FINALPROB(FSM, STATE) ((FSM)->final_table + (STATE))
 #define TRELLIS_CELL(STATE, TIME) ((trellis) + (fsm->num_states) * (TIME) + (STATE))
 #define TRANSITION(FSM, SOURCE_STATE, SYMBOL, TARGET_STATE) ((FSM)->state_table + (FSM)->num_states * (FSM)->alphabet_size * (SOURCE_STATE) + (SYMBOL) * (FSM)->num_states + (TARGET_STATE))
-#define FSM_COUNTS(FSMC,SOURCE_STATE, SYMBOL, TARGET_STATE) ((FSMC) + (fsm->num_states * fsm->alphabet_size * (SOURCE_STATE) + (SYMBOL) * fsm->num_states + (TARGET_STATE)))
+#define FSM_COUNTS(FSMC, SOURCE_STATE, SYMBOL, TARGET_STATE) ((FSMC) + (fsm->num_states * fsm->alphabet_size * (SOURCE_STATE) + (SYMBOL) * fsm->num_states + (TARGET_STATE)))
 
 PROB smrzero = SMRZERO_LOG;
 PROB smrone  = 0;
 
-/* Global structures shared across threads running Baum-Welch */
 PROB *fsm_counts, *fsm_totalcounts, *fsm_finalcounts;
 _Bool *fsm_counts_spin;
 
@@ -136,6 +137,14 @@ int g_num_threads = 1;
 PROB g_betamin = 0.02;
 PROB g_betamax = 1;
 PROB g_alpha = 1.01;
+/* Variational Bayes Dirichlet parameter */
+PROB g_vb_alpha = 0.02;
+/* Collapsed Gibbs sampling concentration, lag, burnin parameters */
+PROB g_gibbs_beta = 0.02;
+int g_gibbs_lag = 100;
+int g_gibbs_burnin = 10000;
+/* Flag whether to adjust counts in BW by VB strategy */
+int g_bw_vb = 0;
 
 struct wfsa *g_lastwfsa = NULL; /* Stores pointer to last WFSA to spit out in case of SIGINT */
 
@@ -221,7 +230,7 @@ void backward(struct wfsa *fsm, struct observations *o, int algorithm);
 
 /* Main training functions */
 PROB train_viterbi(struct wfsa *fsm, struct observations *o, int maxiterations, PROB maxdelta);
-PROB train_baum_welch(struct wfsa *fsm, struct observations *o, int maxiterations, PROB maxdelta);
+PROB train_baum_welch(struct wfsa *fsm, struct observations *o, int maxiterations, PROB maxdelta, int vb);
 PROB train_bw(struct wfsa *fsm, struct observations *o, int maxiterations, PROB maxdelta);
 PROB train_viterbi_bw(struct wfsa *fsm, struct observations *o);
 void *trellis_fill_bw(void *threadargs);

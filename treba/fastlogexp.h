@@ -24,10 +24,13 @@
 /* Array order: x^0, x^1, x^2, x^3, x^4                                       */
 /******************************************************************************/
 
+#include <assert.h>
+
 inline PROB log1plus_minimax(PROB x) {
 
     static const double mm[61][5] = {
-	{1.000000294523528266023080641747018118200,5.000137983039909745599685077166821586592e-1,8.674565581413996689083361220979003743259e-2,2.535058752268224328526728558807895816915e-4,-1.516439960822520490434771183446816832550e-3},
+	//{1.0000000000000000000,0.50001046104880397131,0.086736084604588520792,0.00024467657550238233989,0.0015184462591259856854},
+		{1.000000294523528266023080641747018118200,5.000137983039909745599685077166821586592e-1,8.674565581413996689083361220979003743259e-2,2.535058752268224328526728558807895816915e-4,-1.516439960822520490434771183446816832550e-3},
 	{1.001540902819038643868034951278937150423,5.053932724630792281026719430573953839270e-1,9.398019953671193331596899635167916987335e-2,4.736317746519460505191161205702483284235e-3,-4.285606238356233021835429915032331912140e-4},
 	{1.013976378001803373719080130261091407664,5.302196375839637865890842150875544468037e-1,1.128036571585725980940935215767100213248e-1,1.116060647500509192610719471562426266478e-2,4.038372351507354482020017201054796713189e-4},
 	{1.023131887741515939659513867015413784972,5.436431390241952723476902358142572813042e-1,1.201726082355714224040703285933379155073e-1,1.295614207390065258466470987602678285170e-2,5.677144309040374580981548939465879007012e-4},
@@ -143,4 +146,97 @@ inline PROB log1plus_table_interp(PROB x) {
 
 void log1plus_free(void) {
    free(g_logplustable);
+}
+
+double *taylor0;
+#define TAYLOR_STEP  32
+#define TAYLOR_LIMIT 64
+
+void ln1plus_taylor_init(void) {
+    /* Precalculate table w/ 2nd order Taylor coefficients for log(2^x+1) */
+    /* Uses long doubles for precalculation which are cast into double    */
+    int i;
+    long double v,n,x2term,x1term,x0term;
+    taylor0 = malloc(TAYLOR_LIMIT*TAYLOR_STEP*3*sizeof(double));
+
+    for (i = 0; i < TAYLOR_LIMIT*TAYLOR_STEP; i++) {
+	n = -((double)i)/TAYLOR_STEP;
+	v = exp2l(2*n) + exp2l(n+1) + 1;
+	x2term = 1/(4 + 4 * coshl(n));
+	x1term = 1/(1+expl(-n)) - 2*n/(4 + 4 * coshl(n));
+	x0term = log1pl(expl(n)) - n/(1+expl(-n)) + n*n/(4 + 4 * coshl(n));
+	*(taylor0+i*3+2) = (double) x2term;
+	*(taylor0+i*3+1) = (double) x1term;
+	*(taylor0+i*3+0) = (double) x0term;
+    }
+}
+
+
+
+//2term  (1/(4 + 4 *coshl(n)))
+//1term  1/(1+e^-n) - 2*n/(4 + 4 * coshl(n))
+//0term  log1pl(expl(n)) - n/(1+expl(-n)) + n*n/(4 + 4 * coshl(n))
+
+
+double log1plus_taylor(double x) {
+    double result;
+    int ptr;
+    ptr = ((int) -(x*TAYLOR_STEP-0.5)) * 3;
+    result = x * (*(taylor0+ptr+2)*x + *(taylor0+ptr+1)) + *(taylor0+ptr);
+    return(result);
+}
+
+void log1plus_taylor_init(void) {
+    /* Precalculate table w/ 2nd order Taylor coefficients for log(2^x+1) */
+    /* Uses long doubles for precalculation which are cast into double    */
+    int i;
+    long double v,n,x2term,x1term,x0term;
+    taylor0 = malloc(TAYLOR_LIMIT*TAYLOR_STEP*3*sizeof(double));
+
+    for (i = 0; i < TAYLOR_LIMIT*TAYLOR_STEP; i++) {
+	n = -((double)i)/TAYLOR_STEP;
+	v = exp2l(2*n) + exp2l(n+1) + 1;
+	x2term =  (exp2l(n-1)*M_LN2)/v;
+	x1term = -(exp2l(n)*n*M_LN2)/v - (exp2l(n)/v) - (1/v) + 1;
+	x0term =  (exp2l(n-1)*n*n*M_LN2)/v + exp2l(n)*n/v + n/v + logl(exp2l(n)+1)/M_LN2 - n;
+	*(taylor0+i*3+2) = (double) x2term;
+	*(taylor0+i*3+1) = (double) x1term;
+	*(taylor0+i*3+0) = (double) x0term;
+    }
+}
+
+inline double flog2(double x) {
+    union { double   d ; uint64_t ui ; } temp = { x };
+    union { uint64_t ui; double   d  ; } mant = { (temp.ui & 0xFFFFFFFFFFFFF)|(0x3ff0000000000000) };
+    double km = temp.ui;
+    /* multiply cast by 2^-52, now km = exponent + mantissa + 1023 */
+    km *= 1.0 / ((uint64_t)1 << 52);
+    return(km -1021.0376485365500900 - 1.4521234221210833001/(0.31669599314060688986 + 0.68330400685939311014 * mant.d) + (-0.47060015051526240876 - 0.039624056254597363217 * mant.d) * mant.d);
+}
+
+inline double expdigamma(double x) {
+    /* 6th order Taylor approx */
+    return(11520*x*x*x*x*x*x / (5 + 2*x * (47 + 120*x * (3 + 2*x * (5 + 12 * x * (1 + 2 * x))))));
+    // return(11520 * x*x*x*x*x*x/(11520*x*x*x*x*x+5760*x*x*x*x+2400*x*x*x+720*x*x+94*x+5));
+}
+
+inline double expdigamma_sloppy(double x) {
+    /* General lenient subtraction that is asymptotically x - w, w = 0.5 here to simulate exp-digamma */
+    return(x*x / (0.5 + x + (2 * 0.5/x)));
+}
+
+/* Mark Johnson's digamma approx. */
+inline double digamma(double x) {
+    double result = 0, xx, xx2, xx4;
+    if (x == 0) {
+	return smrzero;
+    }
+    for ( ; x < 7; ++x)
+	result -= 1/x;
+    x -= 1.0/2.0;
+    xx = 1.0/x;
+    xx2 = xx*xx;
+    xx4 = xx2*xx2;
+    result += log(x)+(1./24.)*xx2-(7.0/960.0)*xx4+(31.0/8064.0)*xx4*xx2-(127.0/30720.0)*xx4*xx4;
+    return result;
 }
