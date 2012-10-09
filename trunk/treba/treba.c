@@ -38,6 +38,10 @@
 #define random rand
 #endif
 
+PROB myexp(PROB x) {
+    return(x <= smrzero ? 0 : EXP(x));
+
+}
 PROB output_convert(PROB x) {
     /* Internal format is log2 */
     switch (g_output_format) {
@@ -58,7 +62,7 @@ PROB input_convert(PROB x) {
     case FORMAT_LOG2:   return(x);
     case FORMAT_LOG10:  return(3.32192809488736234787 * x);
     case FORMAT_LN:     return(1.44269504088896340736 * x);
-    case FORMAT_REAL:   return(x == 0 ? smrzero : LOG(x));
+    case FORMAT_REAL:   return(x == 0 ? smrzero : log2(x));
     case FORMAT_NLOG2:  return(-x);
     case FORMAT_NLOG10: return(x == 0 ? 0 : 3.32192809488736234787 * -x);
     case FORMAT_NLN:    return(x == 0 ? 0 : 1.44269504088896340736 * -x);
@@ -92,16 +96,20 @@ char *file_to_mem(char *name) {
     return(buffer);
 }
 
-static PROB rand_double(int n) {
-    long rnd;
-    rnd = random();
-    return (PROB) (rnd % n);
+static PROB rand_double() {
+    return (drand48());
 }
 
 static PROB rand_int(int n) {
     long rnd;
     rnd = rand();
     return (int)(rnd % n);
+}
+
+int rand_int_range(int from, int to) {
+    double ffrom = (double)from;
+    double fto = (double)to;
+    return from + (int)(fto * random() / (RAND_MAX + ffrom));
 }
 
 void wfsa_print(struct wfsa *fsm) {
@@ -136,13 +144,13 @@ void wfsa_randomize_deterministic(struct wfsa *fsm, int uniform) {
         randsum = 0;
         tablesize = fsm->num_states * fsm->alphabet_size;
         for (j = 0; j < fsm->alphabet_size; j++) {
-            k = rand_int(fsm->num_states);          
+            k = rand_int(fsm->num_states);
             tableptr = TRANSITION(fsm,i,j,k);
-            randnum = (uniform == 0) ? rand_double(10000000) : 1;
+            randnum = (uniform == 0) ? rand_double() : 1;
             *tableptr = randnum;
             randsum += randnum;
         }
-        randnum = (uniform == 0) ? rand_double(10000000) : 1;
+        randnum = (uniform == 0) ? rand_double() : 1;
         *(fsm->final_table + i) = randnum;
         randsum += randnum;
         for (tableptr = TRANSITION(fsm,i,0,0), j = 0; j < tablesize; j++) {
@@ -160,12 +168,12 @@ void wfsa_randomize_nondeterministic(struct wfsa *fsm, int bakis, int uniform) {
 	tablesize = fsm->num_states * fsm->alphabet_size;
 	for (j = (bakis == 1 ? i : 0); j < fsm->num_states; j++) {
 	    for (k = 0 ; k < fsm->alphabet_size; k++) {
-		randnum = (uniform == 0) ? rand_double(10000000) : 1;
+		randnum = (uniform == 0) ? rand_double() : 1;
 		*TRANSITION(fsm,i,k,j) = randnum;
 		randsum += randnum;
 	    }
 	}
-	randnum = (uniform == 0) ? rand_double(10000000) : 1;
+	randnum = (uniform == 0) ? rand_double() : 1;
 	*(fsm->final_table + i) = randnum;
 	randsum += randnum;
 	for (tableptr = TRANSITION(fsm,i,0,0), j = 0; j < tablesize; j++) {
@@ -267,11 +275,11 @@ struct wfsa *wfsa_read_file(char *filename) {
 	    maxstate = maxstate > finalstate ? maxstate : finalstate;
 	    break;
 	case 2:
-	    #ifdef MATH_FLOAT
+#ifdef MATH_FLOAT
 	    sscanf(lastline, "%i %g", &finalstate, &prob);
-	    #else
+#else
 	    sscanf(lastline, "%i %lg", &finalstate, &prob);
-	    #endif
+#endif
 	    maxstate = maxstate > finalstate ? maxstate : finalstate;
 	    break;
 	case 3:
@@ -281,11 +289,11 @@ struct wfsa *wfsa_read_file(char *filename) {
 	    maxsymbol = maxsymbol > symbol ? maxsymbol : symbol;
 	    break;
 	case 4:
-	    #ifdef MATH_FLOAT
+#ifdef MATH_FLOAT
 	    sscanf(lastline, "%i %i %i %g", &source, &target, &symbol, &prob);
-	    #else
+#else
 	    sscanf(lastline, "%i %i %i %lg", &source, &target, &symbol, &prob);
-	    #endif
+#endif
 	    maxstate = maxstate > source ? maxstate : source;
 	    maxstate = maxstate > target ? maxstate : target;
 	    maxsymbol = maxsymbol > symbol ? maxsymbol : symbol;
@@ -309,11 +317,11 @@ struct wfsa *wfsa_read_file(char *filename) {
 	    *FINALPROB(fsm, finalstate) = SMRONE_REAL;
 	    break;
 	case 2:
-	    #ifdef MATH_FLOAT
+#ifdef MATH_FLOAT
 	    sscanf(lastline, "%i %g", &finalstate, &prob);
-	    #else
+#else
 	    sscanf(lastline, "%i %lg", &finalstate, &prob);
-	    #endif
+#endif
 	    *FINALPROB(fsm, finalstate) = prob;
 	    break;
 	case 3:
@@ -321,11 +329,11 @@ struct wfsa *wfsa_read_file(char *filename) {
 	    *TRANSITION(fsm, source, symbol, target) = SMRONE_REAL;
 	    break;
 	case 4:
-	    #ifdef MATH_FLOAT
+#ifdef MATH_FLOAT
 	    sscanf(lastline, "%i %i %i %g", &source, &target, &symbol, &prob);
-	    #else
+#else
 	    sscanf(lastline, "%i %i %i %lg", &source, &target, &symbol, &prob);
-	    #endif
+#endif
 	    *TRANSITION(fsm, source, symbol, target) = prob;
 	    break;
 	default:
@@ -428,7 +436,7 @@ struct observations **observations_to_array(struct observations *ohead, int *num
     for (o = ohead, i = 0; o != NULL; o = o->next, i++) { }
     *numobs = i;
     obsarray = malloc(sizeof(struct observations *) * i) ;
-    for (o = ohead, i = 0; o != NULL; o = o->next, i++) { 
+    for (o = ohead, i = 0; o != NULL; o = o->next, i++) {
 	*(obsarray+i) = o;
     }
     return obsarray;
@@ -529,7 +537,7 @@ struct observations *observations_read(char *filename) {
 
 inline PROB log_add(PROB x, PROB y) {
     PROB temp, negdiff;
-    PROB result;
+    PROB result, result2;
     if (x == LOGZERO) return (y);
     if (y == LOGZERO) return (x);
     if (y > x) {
@@ -537,13 +545,20 @@ inline PROB log_add(PROB x, PROB y) {
 	x = y;
 	y = temp;
     }
+
     negdiff = y - x;
+    result2 = (double) log2l(exp2l((long double)negdiff)+1);
     if (negdiff <= -61) { return x; }
 #ifdef LOG_LUT
     result = log1plus_table_interp(negdiff);
+#elif LOG_LIB
+    result = log2(exp2(negdiff)+1);
 #else
+    //result = log1plus_taylor(negdiff);
     result = log1plus_minimax(negdiff);
+    //result = log1plus_table_interp(negdiff);
 #endif /* LOG_LUT */
+    //printf("Asked %.17g REAL: %.17g APPROX: %.17g DIFF: %.17g\n",negdiff,result2,result,fabs(fabs(result)-(fabs(result2))));
     return(result+x);
 }
 
@@ -1093,12 +1108,12 @@ void *trellis_fill_bw(void *threadargs) {
     return(NULL);
 }
 
-PROB train_baum_welch(struct wfsa *fsm, struct observations *o, int maxiterations, PROB maxdelta) {
+PROB train_baum_welch(struct wfsa *fsm, struct observations *o, int maxiterations, PROB maxdelta, int vb) {
     struct trellis *trellis, *trellisarray[32];
     struct thread_args *threadargs[32];
     struct observations **obsarray;
     int i, source, target, symbol, iter, numobs, obsperthread;
-    PROB newprob, prevloglikelihood, da_beta = 1.0;
+    PROB newprob, prevloglikelihood, da_beta = 1.0, numstatetrans;
     pthread_t threadids[32];
     
     if (g_train_da_bw) { da_beta = g_betamin; }
@@ -1171,20 +1186,58 @@ PROB train_baum_welch(struct wfsa *fsm, struct observations *o, int maxiteration
 	}
 
 	/* Modify WFSA (M-step) */
-	signal(SIGINT, SIG_IGN); /* Disable interrupts to prevent corrupted WFSA in case of SIGINT while updating */
+	signal(SIGINT, SIG_IGN); /* Disable interrupts to prevent corrupted WFSA in case of SIGINT while updating */	    
+        
+	/* if (vb == 1) { */
+	/*     for (source = 0; source < fsm->num_states; source++) { */
+	/* 	fsm_totalcounts[source] = LOGZERO; */
+	/* 	for (symbol = 0; symbol < fsm->alphabet_size; symbol++) {		 */
+	/* 	    for (target = 0; target < fsm->num_states; target++) { */
+	/* 		newprob = *FSM_COUNTS(fsm_counts,source,symbol,target); */
+	/* 		if (newprob == LOGZERO) { */
+	/* 		    continue; */
+	/* 		} */
+	/* 		newprob = digamma(myexp(log_add(newprob, LOG(g_vb_alpha))))/M_LN2; */
+	/* 		*FSM_COUNTS(fsm_counts,source,symbol,target) = newprob; */
+	/* 		fsm_totalcounts[source] = log_add(fsm_totalcounts[source], newprob); */
+	/* 	    } */
+	/* 	} */
+	/*     } */
+	/*     for (source = 0; source < fsm->num_states; source++) { */
+	/* 	newprob = fsm_finalcounts[source]; */
+	/* 	if (newprob == LOGZERO) { */
+	/* 	    continue; */
+	/* 	}		 */
+	/* 	newprob = digamma(myexp(log_add(newprob, LOG(g_vb_alpha))))/M_LN2; */
+	/* 	fsm_totalcounts[source] = log_add(fsm_totalcounts[source], newprob); */
+	/* 	fsm_finalcounts[source] = newprob; */
+	/*     } */
+	/* } */
+	numstatetrans = fsm->num_states * fsm->alphabet_size + 1;
+
 	for (source = 0; source < fsm->num_states; source++) {
 	    for (symbol = 0; symbol < fsm->alphabet_size; symbol++) {
 		for (target = 0; target < fsm->num_states; target++) {
 		    newprob = *FSM_COUNTS(fsm_counts,source,symbol,target);
 		    if (newprob == LOGZERO) { newprob = smrzero; }
-		    *TRANSITION(fsm,source,symbol,target) = newprob - fsm_totalcounts[source];
+		    /* Variational Bayes */
+		    if (vb) {
+			*TRANSITION(fsm,source,symbol,target) = (digamma(EXP(newprob) + g_vb_alpha) - digamma(EXP(fsm_totalcounts[source]) + numstatetrans * g_vb_alpha))/M_LN2;
+		    } else {
+			*TRANSITION(fsm,source,symbol,target) = newprob - fsm_totalcounts[source];
+		    }
 		}
 	    }
 	}
 	for (source = 0; source < fsm->num_states; source++) {
 	    newprob = fsm_finalcounts[source];
 	    if (newprob == LOGZERO) { newprob = smrzero; }
-	    *FINALPROB(fsm,source) = newprob - fsm_totalcounts[source];
+	    /* Variational Bayes */
+	    if (vb) {
+		*FINALPROB(fsm,source) = (digamma(EXP(newprob) + g_vb_alpha) - digamma(EXP(fsm_totalcounts[source]) + numstatetrans * g_vb_alpha))/M_LN2;
+	    } else {
+		*FINALPROB(fsm,source) = newprob - fsm_totalcounts[source];
+	    }
 	}
 	g_lastwfsa = fsm;                          /* Put fsm into global var to recover in case of SIGINT */
 	signal(SIGINT, (void *)interrupt_sigproc); /* Re-enable interrupt */
@@ -1208,14 +1261,14 @@ PROB train_bw(struct wfsa *fsm, struct observations *o, int maxiterations, PROB 
     int i;
     PROB thisll, minll;
     if (g_random_restarts == 0)
-	return(train_baum_welch(fsm,o,maxiterations,maxdelta));
+	return(train_baum_welch(fsm,o,maxiterations,maxdelta,g_bw_vb));
 
     /* Random restarts */
     minll = -DBL_MAX;
     bestfsm = NULL;
     for (i = 0; i < g_random_restarts; i++) {
 	fprintf(stderr, "===Running BW restart #%i===\n", i+1);
-	thisll = train_baum_welch(fsm, o, g_random_restart_iterations, maxdelta);
+	thisll = train_baum_welch(fsm, o, g_random_restart_iterations, maxdelta,g_bw_vb);
 	if (thisll > minll) {
 	    minll = thisll;
 	    if (bestfsm != NULL)
@@ -1234,14 +1287,228 @@ PROB train_bw(struct wfsa *fsm, struct observations *o, int maxiterations, PROB 
 	}
     }
     fprintf(stderr, "===Running final BW===\n");
-    return(train_baum_welch(bestfsm,o,maxiterations,maxdelta));
+    return(train_baum_welch(bestfsm,o,maxiterations,maxdelta,g_bw_vb));
 }
 
 PROB train_viterbi_bw(struct wfsa *fsm, struct observations *o) {
     PROB ll;
     train_viterbi(fsm,o,g_maxiterations,g_maxdelta);
-    ll = train_baum_welch(fsm,o,g_maxiterations,g_maxdelta);
+    ll = train_baum_welch(fsm,o,g_maxiterations,g_maxdelta,g_bw_vb);
     return(ll);
+}
+
+struct gibbs_state_chain {
+    int state;
+    int sym;
+};
+
+struct gibbs_state_chain *gibbs_init(struct observations *o, int num_states, int alphabet_size, int *obslen) {
+    int i,j,*data;
+    struct gibbs_state_chain *go;
+    struct observations *tempo;
+
+    /* Initialize the sequence of observations for Gibbs sampling */
+    /* It's a simple array of two ints, like so:                  */
+
+    /*        0     ...  obslen-1                                 */ 
+    /*     --------     --------                                  */
+    /*     |state |     |state |                                  */
+    /*     |sym   |     |sym   |                                  */
+    /*     --------     --------                                  */
+    
+    /* We chain together multiple observations into one big       */
+    /* observation by adding the symbol # at the end of each o    */
+    /* which transitions to state 0. State 0 after # is never     */
+    /* resampled. Also, we augment the alphabet by one to         */
+    /* accommodate for #. After sampling, # represents the        */
+    /* halting probability at that state, and is removed when     */
+    /* constructing an automaton based on the samples taken.      */
+
+    for (tempo = o, (*obslen) = 0; tempo != NULL; tempo = tempo->next, (*obslen)++) {
+	(*obslen) += tempo->size;
+    }
+    (*obslen)++;
+
+    go = malloc(sizeof(struct gibbs_state_chain) * (*obslen));
+
+    for (j = 0; o != NULL; o = o->next) {
+	data = o->data;
+	/* First state is always 0 */
+	(go+j)->state = 0;
+	for (i = 0; i < o->size; i++) {
+	    if (i > 0) {
+		(go+j)->state = rand_int_range(0,num_states);
+	    }
+	    /* Add transition */
+	    (go+j)->sym = *(data+i);
+	    j++;
+	}
+	(go+j)->state = rand_int_range(0,num_states);
+	(go+j)->sym = alphabet_size;
+	j++;
+    }
+    (go+j)->state = 0;
+    (go+j)->sym = -1; /* sentinel */
+    return(go);
+}
+
+int gibbs_weighted_select(PROB *weight_list, PROB weight_sum, int num_elements) {
+
+    /* Do a weighted selection of num_elements, each with their own */
+    /* weight specified in the array prob_list                      */
+    /* The sum of all weights should be given in weight_sum         */
+
+    int i;
+    PROB select;
+    select = rand_double() * weight_sum;
+    for (i = 0; i < num_elements; i++) {
+	select -= weight_list[i];
+	if (select < 0)
+	    return i;
+    }
+    perror("Something is rotten with gibbs_weighted_select(). Shouldn't have reached here.");
+    return i;
+}
+
+PROB gibbs_sampler(struct wfsa *fsm, struct observations *o, double beta, int num_states, int maxiter, int burnin, int lag) {
+
+  /* Macros to access counts easily */
+  #define Ccurr(SOURCE_STATE, SYMBOL, TARGET_STATE) (*((gibbs_counts) + (num_states * alphabet_size * (SOURCE_STATE) + (SYMBOL) * num_states + (TARGET_STATE))))
+
+  #define Ctimestamp(SOURCE_STATE, SYMBOL, TARGET_STATE) (*((gibbs_timestamps) + (num_states * alphabet_size * (SOURCE_STATE) + (SYMBOL) * num_states + (TARGET_STATE))))
+
+  #define Csampled(SOURCE_STATE, SYMBOL, TARGET_STATE) (*((gibbs_sampled_counts) + (num_states * alphabet_size * (SOURCE_STATE) + (SYMBOL) * num_states + (TARGET_STATE))))
+
+    int i, j, k, l, obslen, alphabet_size, z, zprev, znext, a, aprev, anext, indicator, newstate, samplecount;
+    unsigned int steps, *gibbs_counts, *gibbs_counts_states, *gibbs_sampled_counts, *gibbs_counts_sampled_states, *gibbs_timestamps;
+    PROB ANbeta, g_k, g_sum, *current_prob;
+    struct gibbs_state_chain *chain;
+	
+    alphabet_size = g_alphabet_size + 1; /* Use extra symbol for end-of-word (#) */
+    /* Build initial array of states */
+    chain = gibbs_init(o, num_states, g_alphabet_size, &obslen);
+    gibbs_counts = calloc(num_states * num_states * alphabet_size, sizeof(int));
+    gibbs_sampled_counts = calloc(num_states * num_states * alphabet_size, sizeof(int));
+    gibbs_timestamps = calloc(num_states * num_states * alphabet_size, sizeof(int));
+    gibbs_counts_states = calloc(num_states, sizeof(int));
+    gibbs_counts_sampled_states = calloc(num_states, sizeof(int));
+    current_prob = calloc(num_states, sizeof(PROB));
+
+    /* Initialize timestamps to 0 */
+    for (i = 0 ; i < num_states * num_states * alphabet_size; i++)
+	gibbs_timestamps[i] = 0;
+
+    /* Accumulate initial counts from initial random sequence */
+    for (i = 0; i < obslen-1; i++) {
+	Ccurr( (chain+i)->state , (chain+i)->sym, (chain+i+1)->state)++;
+	gibbs_counts_states[(chain+i)->state]++;
+    }
+
+    ANbeta = alphabet_size * num_states * beta;
+
+    for (i = 0, samplecount = 1, steps = 0; i < maxiter; i++) {
+	if (i > 0 && i % 100 == 0) {
+	    fprintf(stderr, "Iteration: %i  Samples collected: %i\n", i, samplecount-1);
+	}
+	for (j = 0; j < obslen; j++) {
+	    if (j == 0 || (chain+j-1)->sym == g_alphabet_size) { /* Don't resample "initial" states */
+		continue;
+	    }
+	    a = (chain+j)->sym;          /* Current symbol  */
+	    aprev = (chain+j-1)->sym;    /* Previous symbol */
+	    z = (chain+j)->state;        /* Current state   */
+	    zprev = (chain+j-1)->state;  /* Previous state  */
+	    znext = (chain+j+1)->state;  /* Next state      */
+
+	    /* Settle up with total counts depending on timestamp */
+	    if (Ctimestamp(zprev,aprev,z) != samplecount) {
+		Csampled(zprev,aprev,z) += ( samplecount - Ctimestamp(zprev,aprev,z) ) * Ccurr(zprev,aprev,z);
+		Ctimestamp(zprev,aprev,z) = samplecount;
+	    }
+	    if (Ctimestamp(z,a,znext) != samplecount) {
+		Csampled(z,a,znext) += ( samplecount - Ctimestamp(z,a,znext) ) * Ccurr(z,a,znext);
+		Ctimestamp(z,a,znext) = samplecount;
+	    }
+
+	    /* Adjust counts */
+	    Ccurr(zprev,aprev,z)--;
+	    Ccurr(z,a,znext)--;
+	    Csampled(zprev,aprev,z)--;
+	    Csampled(z,a,znext)--;
+
+	    gibbs_counts_states[z]--;
+
+	    for (k = 0, g_sum = 0; k < num_states; k++) {
+		/* Sample */
+		indicator = (k == zprev && aprev == a && znext == k) ? 1 : 0;
+		g_k = (((double)Ccurr(k,a,znext)) + beta + indicator) * (((double)Ccurr(zprev,aprev,k)) + beta) / ((double)gibbs_counts_states[k] + ANbeta);
+		if (g_k < 0) {
+		    exit(0);
+		}
+		current_prob[k] = g_k;
+		g_sum += g_k;
+	    }
+	    /* Do #num_states-way weighted coin toss to select new state */
+	    newstate = gibbs_weighted_select(current_prob, g_sum, num_states);
+
+	    /* Settle up with total counts depending on timestamp */
+	    if (Ctimestamp(zprev,aprev,newstate) != samplecount) {
+		Csampled(zprev,aprev,newstate) += ( samplecount - Ctimestamp(zprev,aprev,newstate) ) * Ccurr(zprev,aprev,newstate);
+		Ctimestamp(zprev,aprev,newstate) = samplecount;
+	    }
+	    if (Ctimestamp(newstate,a,znext) != samplecount) {
+		Csampled(newstate,a,znext) += ( samplecount - Ctimestamp(newstate,a,znext) ) * Ccurr(newstate,a,znext);
+		Ctimestamp(newstate,a,znext) = samplecount;
+	    }
+	    Ccurr(zprev,aprev,newstate)++;
+	    Ccurr(newstate,a,znext)++;
+	    Csampled(zprev,aprev,newstate)++;
+	    Csampled(newstate,a,znext)++;
+
+	    gibbs_counts_states[newstate]++;
+	    (chain+j)->state = newstate;
+	    steps++;
+	    if (i > burnin && steps % lag == 0) {
+		/* Update samplecount: sample count table entries will be updated */
+		/* as we go along based on the timestamp                          */
+		samplecount++;
+	    }
+	}
+    }
+    /* Settle all remaining debts Ccurr has with Csampled depending on timestamps */
+    for (l = 0; l < num_states * num_states * alphabet_size; l++) {
+	gibbs_sampled_counts[l] += ( samplecount - gibbs_timestamps[l] ) * gibbs_counts[l];
+    }
+
+    /* Construct WFSA */
+    for (i = 0 ; i < num_states; i++) {
+	for (j = 0; j < num_states; j++) {
+	    for (k = 0; k < alphabet_size; k++) {
+		gibbs_counts_sampled_states[i] += Csampled(i,k,j);
+	    }
+	}
+    }
+    for (i = 0 ; i < num_states; i++) {
+	for (j = 0; j < num_states; j++) {
+	    for (k = 0; k < alphabet_size; k++) {
+		if (k == alphabet_size - 1) {
+		    *FINALPROB(fsm,i) += ((double)Csampled(i,k,j) + beta) / ((double)gibbs_counts_sampled_states[i] + ANbeta);
+		} else {		    
+		    *(TRANSITION(fsm,i,k,j)) = log2(((double)Csampled(i,k,j) + beta) / ((double)gibbs_counts_sampled_states[i] + ANbeta));
+		}
+	    }
+	}
+    }
+    for (i = 0; i < num_states; i++)
+	*FINALPROB(fsm,i) = log2(*FINALPROB(fsm,i));
+
+    free(chain);
+    free(gibbs_counts);
+    free(gibbs_sampled_counts);
+    free(gibbs_counts_states);
+    free(gibbs_counts_sampled_states);
+    free(current_prob);
+    return(0.0); /* log likelihood */
 }
 
 int main(int argc, char **argv) {
@@ -1249,7 +1516,8 @@ int main(int argc, char **argv) {
     char *fsmfile = NULL, optionchar;
     struct wfsa *fsm;
     struct observations *o = NULL;
-   
+	
+    log1plus_taylor_init();
 #ifdef _WIN32
     SYSTEM_INFO sysinfo;
     GetSystemInfo(&sysinfo);
@@ -1258,8 +1526,10 @@ int main(int argc, char **argv) {
     g_numcpus = (int) sysconf(_SC_NPROCESSORS_ONLN);
 #endif
 
-    srandom(time (0));
-    while ((opt = getopt(argc, argv, "uhva:d:f:i:o:p:r:g:t:x:G:T:L:D:")) != -1) {
+    srandom((unsigned int)time((time_t *)NULL));
+    srand48((unsigned int)time((time_t *)NULL));
+
+    while ((opt = getopt(argc, argv, "uhva:b:d:f:l:i:o:p:r:g:t:x:G:T:L:D:")) != -1) {
 	switch(opt) {
 	case 'v':
 	    printf("This is %s\n", versionstring);
@@ -1271,11 +1541,11 @@ int main(int argc, char **argv) {
 	    g_initialize_uniform = 1;
 	    break;
 	case 'a':
-	    #ifdef MATH_FLOAT
+#ifdef MATH_FLOAT
 	    numelem = sscanf(optarg,"%g,%g,%g",&g_betamin,&g_betamax,&g_alpha);
-	    #else
+#else
 	    numelem = sscanf(optarg,"%lg,%lg,%lg",&g_betamin,&g_betamax,&g_alpha);
-	    #endif
+#endif
 	    if (numelem < 3) {
 		printf("-a option requires betamin,betamax,alpha\n"); 
 		exit(1);
@@ -1296,7 +1566,7 @@ int main(int argc, char **argv) {
 	    case 'n': g_generate_type = GENERATE_NONDETERMINISTIC; break;
 	    default: printf("-g option requires b|d|n\n"); exit(1);
 	    }
-	    
+			
 	    if (numelem < 2) { printf("Error in option -g\n"); exit(1); }
 	    if (numelem < 3) { g_alphabet_size = -1;}
 	    break;
@@ -1336,6 +1606,14 @@ int main(int argc, char **argv) {
 	    break;
 	case 'p':
 	    g_viterbi_pseudocount = atoi(optarg);
+	    g_vb_alpha = strtod(optarg,NULL);
+	    g_gibbs_beta = strtod(optarg,NULL);			
+	    break;
+	case 'b':
+	    g_gibbs_burnin = atoi(optarg);
+	    break;
+	case 'l':
+	    g_gibbs_lag = atoi(optarg);
 	    break;
 	case 'x':
 	    g_maxiterations = atoi(optarg);
@@ -1349,6 +1627,12 @@ int main(int argc, char **argv) {
 		algorithm = TRAIN_VITERBI;
 	    if (strcmp(optarg,"bw") == 0)
 		algorithm = TRAIN_BAUM_WELCH;
+	    if (strcmp(optarg,"gs") == 0)
+		algorithm = TRAIN_GIBBS_SAMPLING;
+	    if (strcmp(optarg,"vb") == 0) {
+		algorithm = TRAIN_VARIATIONAL_BAYES;
+		g_bw_vb = 1;
+	    }
 	    if (strcmp(optarg,"vitbw") == 0)
 		algorithm = TRAIN_VITERBI_BW;
 	    if (strcmp(optarg,"dabw") == 0) {
@@ -1404,13 +1688,15 @@ int main(int argc, char **argv) {
     }
     if (g_generate_type > 0) {
 	fsm = wfsa_init(g_num_states, g_alphabet_size);
-	if (g_generate_type == GENERATE_NONDETERMINISTIC)
-	    wfsa_randomize_nondeterministic(fsm,0,g_initialize_uniform);
-	if (g_generate_type == GENERATE_DETERMINISTIC)
-	    wfsa_randomize_deterministic(fsm,g_initialize_uniform);
-	if (g_generate_type == GENERATE_BAKIS)
-	    wfsa_randomize_nondeterministic(fsm,1,g_initialize_uniform);
-	wfsa_to_log2(fsm);
+	if (algorithm != TRAIN_GIBBS_SAMPLING) {
+	    if (g_generate_type == GENERATE_NONDETERMINISTIC)
+		wfsa_randomize_nondeterministic(fsm,0,g_initialize_uniform);
+	    if (g_generate_type == GENERATE_DETERMINISTIC)
+		wfsa_randomize_deterministic(fsm,g_initialize_uniform);
+	    if (g_generate_type == GENERATE_BAKIS)
+		wfsa_randomize_nondeterministic(fsm,1,g_initialize_uniform);
+	    wfsa_to_log2(fsm);
+	}
     }
 
     if (fsmfile != NULL) {
@@ -1424,9 +1710,9 @@ int main(int argc, char **argv) {
 	printf("Observations alphabet size %i, FSA alphabet size: %i.\n", fsm->alphabet_size, obs_alphabet_size);
 	exit(1);
     }
-
+	
     log1plus_init();
-
+	
     switch (algorithm) {
     case GENERATE_WORDS:
 	generate_words(fsm,g_generate_words);
@@ -1446,6 +1732,7 @@ int main(int argc, char **argv) {
     case LIKELIHOOD_BACKWARD:
 	backward(fsm,o,algorithm);
 	break;
+    case TRAIN_VARIATIONAL_BAYES:
     case TRAIN_BAUM_WELCH:
     case TRAIN_DA_BAUM_WELCH:
 	o = observations_sort(o);
@@ -1463,6 +1750,11 @@ int main(int argc, char **argv) {
 	o = observations_sort(o);
 	o = observations_uniq(o);
 	train_viterbi_bw(fsm,o);
+	wfsa_print(fsm);
+	break;
+    case TRAIN_GIBBS_SAMPLING:
+	o = observations_sort(o);
+	gibbs_sampler(fsm, o, g_gibbs_beta, g_num_states, g_maxiterations, g_gibbs_burnin, g_gibbs_lag);
 	wfsa_print(fsm);
 	break;
     default:
