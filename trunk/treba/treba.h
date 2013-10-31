@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*   treba - probabilistic finite-state automaton training and decoding   */
+/*   treba - probabilistic FSM and HMM training and decoding              */
 /*   Copyright © 2012 Mans Hulden                                         */
 
 /*   This file is part of treba.                                          */
@@ -32,7 +32,17 @@
 #define TRAIN_VITERBI_BW        13
 #define TRAIN_VARIATIONAL_BAYES 14
 #define TRAIN_GIBBS_SAMPLING    15
-#define GENERATE_WORDS          16
+#define TRAIN_MERGE             16
+#define TRAIN_MDI               17
+#define GENERATE_WORDS          18
+
+/* State merging tests */
+#define MERGE_TEST_ALERGIA      1 /* Alergia (Hoeffding bound test)                           */
+#define MERGE_TEST_CHISQUARED   2 /* Chi squared                                              */
+#define MERGE_TEST_LR           3 /* Likelihood ratio                                         */
+#define MERGE_TEST_BINOMIAL     4 /* Approx binomial test                                     */
+#define MERGE_TEST_EXACT_M      5 /* "Exact" (monte-carlo) multinomial test of p-value (slow) */
+#define MERGE_TEST_EXACT_B      6 /* Exact binomial test of p-value (slow)                    */
 
 #define GENERATE_NONDETERMINISTIC 1
 #define GENERATE_DETERMINISTIC    2
@@ -49,37 +59,34 @@
 #define FORMAT_NLOG2    5
 #define FORMAT_NLN      6
 
-#ifdef MATH_FLOAT
- #define LOG(X)        (log2f((X)))
- #define EXP(X)        (exp2f((X)))
- #define SMRZERO_LOG  -FLT_MAX
- #define LOGZERO       FLT_MAX
- #define ABS(X)        (fabsf((X)))
- typedef float PROB;
-#else
- #define LOG(X)        (log2((X)))
- #define EXP(X)        (exp2((X)))
- #define SMRZERO_LOG  -DBL_MAX
- #define LOGZERO       DBL_MAX
- #define ABS(X)        (fabs((X)))
- typedef double PROB;
-#endif /* MATH_FLOAT */
-
+#define LOG(X)        (log2((X)))
+#define EXP(X)        (exp2((X)))
+#define SMRZERO_LOG  -DBL_MAX
+#define LOGZERO       DBL_MAX
+#define ABS(X)        (fabs((X)))
+typedef double PROB;
 
 /* Auxiliary macros to access trellis, FSMs, and FSM counts */
 #define FINALPROB(FSM, STATE) ((FSM)->final_table + (STATE))
 #define TRELLIS_CELL(STATE, TIME) ((trellis) + (fsm->num_states) * (TIME) + (STATE))
+#define TRELLIS_CELL_HMM(STATE, TIME) ((trellis) + (hmm->num_states) * (TIME) + (STATE))
 #define TRANSITION(FSM, SOURCE_STATE, SYMBOL, TARGET_STATE) ((FSM)->state_table + (FSM)->num_states * (FSM)->alphabet_size * (SOURCE_STATE) + (SYMBOL) * (FSM)->num_states + (TARGET_STATE))
 #define FSM_COUNTS(FSMC, SOURCE_STATE, SYMBOL, TARGET_STATE) ((FSMC) + (fsm->num_states * fsm->alphabet_size * (SOURCE_STATE) + (SYMBOL) * fsm->num_states + (TARGET_STATE)))
 
-PROB smrzero = SMRZERO_LOG;
-PROB smrone  = 0;
+#define HMM_TRANSITION_COUNTS(HMMC, SOURCE_STATE, TARGET_STATE) (((HMMC)->transition_table) + ((HMMC)->num_states * (SOURCE_STATE) + (TARGET_STATE)))
+#define HMM_EMISSION_COUNTS(HMMC, STATE, SYMBOL) (((HMMC)->emission_table) + ((HMMC)->alphabet_size * (STATE) + (SYMBOL)))
+
+#define HMM_TRANSITION_PROB(HMM, SOURCE_STATE, TARGET_STATE) ((HMM)->transition_table + (HMM)->num_states * (SOURCE_STATE) + (TARGET_STATE))
+#define HMM_EMISSION_PROB(HMM, STATE, SYMBOL) ((HMM)->emission_table + (HMM)->alphabet_size * (STATE) + (SYMBOL))
+
+//PROB smrzero = SMRZERO_LOG;
+//PROB smrone  = 0;
 
 PROB *fsm_counts, *fsm_totalcounts, *fsm_finalcounts;
 _Bool *fsm_counts_spin;
 
-pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
-PROB g_loglikelihood = 0;
+//pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
+
 
 struct thread_args {
     struct trellis *trellis;
@@ -99,6 +106,13 @@ struct wfsa {
     PROB *final_table;
 };
 
+struct hmm {
+    int num_states;
+    int alphabet_size;
+    PROB *transition_table;
+    PROB *emission_table;
+};
+
 struct observations {
     int size;
     int *data;
@@ -112,80 +126,45 @@ struct trellis {
     int backstate;
 };
 
-/*******************/
-/* Default options */
-/*******************/
 
-int g_numcpus = 1;
-int g_maxiterations = 100000;
-PROB g_maxdelta = 0.1;
-int g_input_format = FORMAT_REAL;
-int g_output_format = FORMAT_REAL;
-int g_viterbi_pseudocount = 1;
-int g_random_restarts = 0;
-int g_random_restart_iterations = 3;
-int g_generate_type = 0;
-int g_gen_max_length = 100000;
-int g_num_states = 5;
-int g_alphabet_size = -1;
-int g_initialize_uniform = 0;
-int g_train_da_bw = 0;
-int g_generate_words = 0;
-/* Thread variables */
-int g_num_threads = 1;
-/* Deterministic annealing default parameters */
-PROB g_betamin = 0.02;
-PROB g_betamax = 1;
-PROB g_alpha = 1.01;
-/* Variational Bayes Dirichlet parameter */
-PROB g_vb_alpha = 0.02;
-/* Collapsed Gibbs sampling concentration, lag, burnin parameters */
-PROB g_gibbs_beta = 0.02;
-int g_gibbs_lag = 100;
-int g_gibbs_burnin = 10000;
-/* Flag whether to adjust counts in BW by VB strategy */
-int g_bw_vb = 0;
-
-struct wfsa *g_lastwfsa = NULL; /* Stores pointer to last WFSA to spit out in case of SIGINT */
-
-static char *versionstring = "treba v0.1";
-static char *usagestring = 
-"treba [options] observationfile\n";
-static char *helpstring = 
-"\n"
-"Train FSMs, calculate probabilities and best paths of sequences.\n\n"
-
-"Main options:\n"
-"-T bw|dabw|vit|vitbw\tTrain FSM with Baum-Welch, B-W + deterministic annealing, Viterbi training, Viterbi+B-W.\n"
-"-D f|b|vit(,p)\t\tDecode (find best path through automaton) with forward, backward, or Viterbi.\n"
-"-L f|vit\t\tCalculate probability of sequences; forward probability or best path (Viterbi).\n"
-"-i format\t\tSet input format (real, log10, ln, log2, nlog10, nln, nlog2). Default is real.\n"
-"-o format\t\tSet output format (real, log10, ln, log2, nlog10, nln, nlog2). Default is real.\n"
-"-f fsmfile\t\tSpecify FSM file.\n"
-"-g b|d|n#states(,#syms)\tSpecify type of initial random FSM. b=Bakis,d=deterministic,n=ergodic.\n"
-"-u\t\t\tSet uniform probabilities on initially generated FSM.\n\n"
-"Training options:\n"
-"-d max-delta\t\tMaximum change in log likelihood for convergence. Default is 0.1.\n"
-"-x maxiterations\tMaximum number of iterations for training. Default is 100000.\n"
-"-p pseudocounts\t\tPseudocounts to use for Viterbi training. Default is 1.\n"
-"-r restarts,iterations-per-restart\tNumber of restarts and iterations per restart before beginning B-W.\n"
-"-a betamin,betamax,alpha\tParameters for deterministic annealing.\n"
-"-t num-threads\t\tNumber of threads to launch in Baum-Welch training.\n";
+ /* In io.c */
 
 /* Input and output conversion */
 PROB output_convert(PROB x);
 PROB input_convert(PROB x);
-
-void interrupt_sigproc(void);
-
-inline void spinlock_lock(_Bool *ptr);
-inline void spinlock_unlock(_Bool *ptr);
 
 /* Functions to handle file and text input */
 char *file_to_mem(char *name);
 int char_in_array(char c, char *array);
 int line_count_elements(char **ptr);
 char *line_to_int_array(char *ptr, int **line, int *size);
+
+void hmm_print(struct hmm *hmm);
+
+
+/* Gibbs */
+
+struct gibbs_state_chain {
+    int state;
+    int sym;
+};
+
+PROB gibbs_sampler_fsm(struct wfsa *fsm, struct observations *o, double beta, int num_states, int maxiter, int burnin, int lag);
+PROB gibbs_sampler_hmm(struct hmm *hmm, struct observations *o, double beta_e, double beta_t, int num_states, int maxiter, int burnin, int lag);
+struct hmm *gibbs_counts_to_hmm(struct hmm *hmm, unsigned int *gibbs_sampled_counts_trans, unsigned int *gibbs_sampled_counts_emit, unsigned int *gibbs_counts_sampled_states, int alphabet_size, int num_states, double beta_t, double beta_e);
+struct wfsa *gibbs_counts_to_wfsa(struct wfsa *fsm, unsigned int *gibbs_sampled_counts, unsigned int *gibbs_counts_sampled_states, int alphabet_size, int num_states, double beta, double ANbeta);
+struct gibbs_state_chain *gibbs_init_fsm(struct observations *o, int num_states, int alphabet_size, int *obslen);
+struct gibbs_state_chain *gibbs_init_hmm(struct observations *o, int num_states, int alphabet_size, int *obslen);
+PROB gibbs_sampler_fsm(struct wfsa *fsm, struct observations *o, double beta, int num_states, int maxiter, int burnin, int lag);
+PROB gibbs_sampler_hmm(struct hmm *hmm, struct observations *o, double beta_e, double beta_t, int num_states, int maxiter, int burnin, int lag);
+
+void interrupt_sigproc(void);
+
+inline void spinlock_lock(_Bool *ptr);
+inline void spinlock_unlock(_Bool *ptr);
+
+PROB rand_double();
+int rand_int_range(int from, int to);
 
 /* WFSA functions */
 struct wfsa *wfsa_read_file(char *filename);
@@ -211,11 +190,17 @@ struct observations *observations_sort(struct observations *ohead);
 void observations_destroy(struct observations *ohead);
 struct observations *observations_read(char *filename);
 
+
+PROB loglikelihood_all_observations_fsm(struct wfsa *fsm, struct observations *o);
+PROB loglikelihood_all_observations_hmm(struct hmm *hmm, struct observations *o);
+
 /* Trellis functions */
 PROB trellis_backward(struct trellis *trellis, int *obs, int length, struct wfsa *fsm);
 PROB trellis_viterbi(struct trellis *trellis, int *obs, int length, struct wfsa *fsm);
-PROB trellis_forward(struct trellis *trellis, int *obs, int length, struct wfsa *fsm);
-struct trellis *trellis_init(struct observations *o, struct wfsa *fsm);
+PROB trellis_forward_fsm(struct trellis *trellis, int *obs, int length, struct wfsa *fsm);
+PROB trellis_forward_hmm(struct trellis *trellis, int *obs, int length, struct hmm *hmm);
+struct trellis *trellis_init_fsm(struct observations *o, struct wfsa *fsm);
+struct trellis *trellis_init_hmm(struct observations *o, struct hmm *hmm);
 void trellis_print(struct trellis *trellis, struct wfsa *fsm, int obs_len);
 
 /* Trellis path printing functions */
@@ -225,7 +210,7 @@ void viterbi_print_path(struct trellis *trellis, struct wfsa *fsm, int obs_len);
 
 /* Main decoding and likelihood calculations */
 void viterbi(struct wfsa *fsm, struct observations *o, int algorithm);
-void forward(struct wfsa *fsm, struct observations *o, int algorithm);
+void forward_fsm(struct wfsa *fsm, struct observations *o, int algorithm);
 void backward(struct wfsa *fsm, struct observations *o, int algorithm);
 
 /* Main training functions */
@@ -236,3 +221,21 @@ PROB train_viterbi_bw(struct wfsa *fsm, struct observations *o);
 void *trellis_fill_bw(void *threadargs);
 
 int main(int argc, char **argv);
+
+/* dffa.c */
+
+struct dffa {
+    int num_states;
+    int alphabet_size;
+    int *transitions;
+    int *transition_freqs;
+    int *final_freqs;
+    int *total_freqs;
+};
+
+struct wfsa *dffa_to_wfsa(struct dffa *dffa);
+struct dffa *dffa_state_merge(struct observations *o, PROB alpha, int test, int recursive);
+struct dffa *dffa_mdi(struct observations *o, PROB alpha);
+struct dffa *observations_to_dffa(struct observations *o);
+struct dffa *dffa_init(int num_states, int alphabet_size);
+int dffa_chi2_test(struct dffa *dffa, int qu, int qv, double alpha);

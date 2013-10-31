@@ -9,4 +9,10 @@ To compile treba
 
 should work on most UNIX systems.  The default installation target /usr/local can be changed in the Makefile.
 
-Some pre-built binaries are available in the bin/ directory.
+If you have the CUDA development files installed, you can build with
+
+  make CUDA=1
+
+to enable the --cuda flag.
+
+Some pre-built binaries are available in the bin/ directory in the tarball releases.

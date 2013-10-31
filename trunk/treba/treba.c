@@ -1,6 +1,6 @@
 /**************************************************************************/
-/*   treba - probabilistic finite-state automaton training and decoding   */
-/*   Copyright © 2012 Mans Hulden                                         */
+/*   treba - probabilistic FSM and HMM training and decoding              */
+/*   Copyright © 2013 Mans Hulden                                         */
 
 /*   This file is part of treba.                                          */
 
@@ -28,113 +28,100 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <signal.h>
+#include <getopt.h>
 
 #include "treba.h"
+#include "globals.h"
 #include "fastlogexp.h"
 
 #ifdef _WIN32
-#include <windows.h>
-#define srandom srand
-#define random rand
+ #include <windows.h>
+ #define srandom srand
+ #define random rand
 #endif
 
-PROB myexp(PROB x) {
-    return(x <= smrzero ? 0 : EXP(x));
+static char *usagestring = 
+"treba [options] observationfile\n";
+static char *helpstring =
+"\n"
+"Train/induce FSMs/HMMs, calculate probabilities and best paths of sequences.\n\n"
 
-}
-PROB output_convert(PROB x) {
-    /* Internal format is log2 */
-    switch (g_output_format) {
-    case FORMAT_LOG2:   return(x);
-    case FORMAT_LOG10:  return(0.30102999566398119521 * x);
-    case FORMAT_LN:     return(0.69314718055994530942 * x);
-    case FORMAT_REAL:   return(x <= smrzero ? 0 : EXP(x));
-    case FORMAT_NLOG2:  return(x == 0 ? 0 : -x);
-    case FORMAT_NLOG10: return(x == 0 ? 0 : 0.30102999566398119521 * -x);
-    case FORMAT_NLN:    return(x == 0 ? 0 : 0.69314718055994530942 * -x);
-    }
-    return(x);
-}
+"Main options:\n\n"
+" -T , --train=ALG        Train FSM with state merging, Baum-Welch, B-W +\n"
+"                         deterministic annealing, Gibbs sampling, Viterbi\n"
+"                         training, Viterbi+B-W.\n"
+"                         ALG is one of merge,mdi,bw,dabw,gs,vb,vit,vitbw\n"
+"                         merge = State-merging algorithms (such as ALERGIA)\n"
+"                         mdi = MDI algorithm\n"
+"                         bw = Baum-Welch, dabw = Baum-Welch w/ det. annealing.\n"
+"                         vit = Viterbi-Baum-Welch (Hard EM)\n"
+"                         vitbw = vit until convergence followed by B-W\n"
+"                         vb = Variational Bayes\n"
+"                         gs = Gibbs sampling\n"
+" -C , --cuda             Use CUDA parallellization (for Gibbs sampling).\n"
+"                         Requires compiled support to cuda.\n"
+" -H , --hmm              Train HMM (instead of PFSA).\n"
+" -D , --decode=METHOD    Decode (find best path through automaton) with\n"
+"                         forward, backward, or Viterbi.\n"
+"                         METHOD one of f[,p],b[,p],vit[,p]; adding ,p specifies\n"
+"                         probabilities to be printed as well as the path.\n"
+" -L , --likelihood=TYPE  Calculate probability of sequences; forward\n"
+"                         probability or best path (Viterbi). TYPE one of f,vit\n"
+" -G , --generate=NUM     Generate NUM words from HMM of PFSA\n"
+" -M , --merge=ALG        Set merge test for merge-based learning algorithms.\n"
+"                         ALG one of alergia,chi2,lr,binomial,exactm,exact\n"
+" -i , --input-format=F   Set input probability/weight format from FSMs/HMMs\n"
+"                         F one of real,log10,ln,log2,nlog10,nln,nlog2.\n"
+"                         n prefix to FMT is negative. Default is real.\n"
+" -o , --output-format=F  Set  probability/weight format from FSMs/HMMs\n"
+"                         F one of real,log10,ln,log2,nlog10,nln,nlog2.\n"
+"                         n prefix to FMT is negative. Default is real.\n"
+" -f , --file=FILE        Specify FSM/PFSA/HMM to read from file.\n"
+" -g , --initialize=TYPE  Specify type of initial random FSM. TYPE in\n"
+"                         b,d,n#states[,#syms] b=Bakis,d=deterministic,n=ergodic\n"
+" -u , --uniform-probs    Set uniform probabilities on initially generated FSM.\n"
+"\n"
+"Training options:\n\n"
+" -A , --alpha=NUM        Main parameter for state merging algorithms\n"
+"                         Default: 0.05 (ALERGIA/MDI)\n"
+" -y , --t0=NUM           t0-parameter for ALERGIA/MDI\n"
+" -b , --burnin=NUM       Burnin iterations for Gibbs sampler\n"
+" -l , --lag=NUM          Lag of Gibbs sampler.\n"
+" -d , --max-delta=NUM    Maximum change in log likelihood between iterations\n"
+"                         for convergence. Default is 0.1.\n"
+" -x , --max-iter         Maximum number of iterations to run. Default is 100000\n"
+" -p , --prior=NUM        Pseudocounts/parameter to use in various algorithms\n"
+"                         Default is 0.02 (Gibbs/Var. Bayes), 1 (Hard EM), \n"
+"                         For HMMs, use two comma separated values NUM1,NUM2\n"
+"                         NUM1 = state-to-state prior, NUM2 = emission prior\n"
+" -r , --restarts=OPT     Number of restarts and iterations per restart before\n"
+"                         beginning final run of B-W. Restart OPT is given as\n"
+"                         numrestarts,iterations-per-restart\n"
+" -R , --recursive-merge  Do merge tests recursively (for merging algorithms).\n"
+" -a , --annealopts=PAR   Parameters for deterministic annealing.\n"
+"                         PAR specified as betamin,betamax,alpha.\n"
+" -t , --threads=NUM      Number of threads to launch in parallel for Baum-Welch\n"
+"                         Can be specified as fraction of available CPUs c/NUM\n";
 
-PROB input_convert(PROB x) {
-    /* Internal format is log2 */
-    switch (g_input_format) {
-    case FORMAT_LOG2:   return(x);
-    case FORMAT_LOG10:  return(3.32192809488736234787 * x);
-    case FORMAT_LN:     return(1.44269504088896340736 * x);
-    case FORMAT_REAL:   return(x == 0 ? smrzero : log2(x));
-    case FORMAT_NLOG2:  return(-x);
-    case FORMAT_NLOG10: return(x == 0 ? 0 : 3.32192809488736234787 * -x);
-    case FORMAT_NLN:    return(x == 0 ? 0 : 1.44269504088896340736 * -x);
-    }
-    return(x);
-}
+PROB g_loglikelihood = 0;
 
-char *file_to_mem(char *name) {
-    FILE    *infile;
-    size_t    numbytes;
-    char *buffer;
-    infile = fopen(name, "r");
-    if(infile == NULL) {
-        printf("Error opening file '%s'\n",name);
-        return NULL;
-    }
-    fseek(infile, 0L, SEEK_END);
-    numbytes = ftell(infile);
-    fseek(infile, 0L, SEEK_SET);
-    buffer = (char*)malloc((numbytes+1) * sizeof(char));
-    if(buffer == NULL) {
-        perror("Error reading file");
-        return NULL;
-    }
-    if (fread(buffer, sizeof(char), numbytes, infile) != numbytes) {
-        perror("Error reading file");
-        return NULL;
-    }
-    fclose(infile);
-    *(buffer+numbytes)='\0';
-    return(buffer);
-}
+#ifdef USE_CUDA
+ static char *versionstring = "treba v0.1 (compiled with CUDA support)";
+ extern double gibbs_sampler_cuda_fsm(struct wfsa *fsm, struct observations *o, double beta, int num_states, int maxiter, int burnin, int lag);
+ extern double gibbs_sampler_cuda_hmm(struct hmm *hmm, struct observations *o, double beta_t, double beta_e, int num_states, int maxiter, int burnin, int lag);
+#else
+ static char *versionstring = "treba v1.0 (compiled without CUDA support)";
+#endif /* USE_CUDA */
 
-static PROB rand_double() {
+PROB rand_double() {
     return (drand48());
 }
 
-static PROB rand_int(int n) {
-    long rnd;
-    rnd = rand();
-    return (int)(rnd % n);
-}
-
+/* Returns int from <= r < to */ 
 int rand_int_range(int from, int to) {
     double ffrom = (double)from;
     double fto = (double)to;
     return from + (int)(fto * random() / (RAND_MAX + ffrom));
-}
-
-void wfsa_print(struct wfsa *fsm) {
-    int i,j,k;
-    PROB thisprob;
-    for (i=0; i < fsm->num_states; i++) {
-	for (j = 0; j < fsm->alphabet_size; j++) {
-	    for (k = 0; k < fsm->num_states; k++) {
-		thisprob = *(TRANSITION(fsm,i,j,k));
-		if (thisprob > smrzero) {
-		    if (g_output_format != FORMAT_REAL || output_convert(thisprob) > 0) {
-			printf("%i %i %i %.17g\n", i,k,j, output_convert(thisprob));
-		    }
-		}
-	    }
-	}
-    }
-    for (i=0; i < fsm->num_states; i++) {
-	thisprob = *(fsm->final_table + i);
-	if (thisprob > smrzero) {
-	    if (g_output_format != FORMAT_REAL || output_convert(thisprob) > 0) {
-		printf("%i %.17g\n",i,output_convert(thisprob));
-	    }
-	}
-    }
 }
 
 void wfsa_randomize_deterministic(struct wfsa *fsm, int uniform) {
@@ -144,7 +131,7 @@ void wfsa_randomize_deterministic(struct wfsa *fsm, int uniform) {
         randsum = 0;
         tablesize = fsm->num_states * fsm->alphabet_size;
         for (j = 0; j < fsm->alphabet_size; j++) {
-            k = rand_int(fsm->num_states);
+            k = rand_int_range(0,fsm->num_states);
             tableptr = TRANSITION(fsm,i,j,k);
             randnum = (uniform == 0) ? rand_double() : 1;
             *tableptr = randnum;
@@ -183,12 +170,28 @@ void wfsa_randomize_nondeterministic(struct wfsa *fsm, int bakis, int uniform) {
     }
 }
 
+struct hmm *hmm_init(int num_states, int alphabet_size) {
+    struct hmm *hmm;
+    hmm = malloc(sizeof(struct hmm));
+    hmm->num_states = num_states;
+    hmm->alphabet_size = alphabet_size;
+    hmm->transition_table = calloc(num_states * num_states, sizeof(PROB));
+    hmm->emission_table = calloc(num_states * alphabet_size, sizeof(PROB));
+    return(hmm);
+}
+
 struct wfsa *wfsa_init(int num_states, int alphabet_size) {
     struct wfsa *fsm;
     fsm = malloc(sizeof(struct wfsa));
+    if (fsm == NULL) {
+	fprintf(stderr, "Out of memory. Fatal.\n"); exit(1);
+    }
     fsm->num_states = num_states;
     fsm->alphabet_size = alphabet_size;
     fsm->state_table = calloc(num_states * num_states * alphabet_size, sizeof(PROB));
+    if (fsm->state_table == NULL) {
+	fprintf(stderr, "Out of memory. Fatal.\n"); exit(1);
+    }
     fsm->final_table = calloc(num_states, sizeof(PROB));
     return(fsm);
 }
@@ -211,6 +214,12 @@ void wfsa_destroy(struct wfsa *fsm) {
     free(fsm);
 }
 
+void hmm_destroy(struct hmm *hmm) {
+    free(hmm->transition_table);
+    free(hmm->emission_table);
+    free(hmm);
+}
+
 void wfsa_to_log2(struct wfsa *fsm) {
     int i,j,k;
     for (i = 0; i < fsm->num_states; i++) {
@@ -225,33 +234,18 @@ void wfsa_to_log2(struct wfsa *fsm) {
     }
 }
 
-int char_in_array(char c, char *array) {
-    int i;
-    for (i = 0; *(array+i) != '\0'; i++) {
-	if (c == *(array+i)) {
-	    return 1;
+void hmm_to_log2(struct hmm *hmm) {
+    int i,j;
+    for (i = 0; i < hmm->num_states; i++) {
+	for (j = 0; j < hmm->num_states; j++) {
+	    *HMM_TRANSITION_PROB(hmm,i,j) = input_convert(*HMM_TRANSITION_PROB(hmm,i,j));
 	}
     }
-    return 0;
-}
-
-int line_count_elements(char **ptr) {
-    int i, elements;
-    char seps[] = {'0','1','2','3','4','5','6','7','8','9','.','-','e','E','\0'};
-    for (i = 0, elements = 0; *(*ptr+i) != '\n' && *(*ptr+i) != '\0'; i++) {
-	if (!char_in_array(*(*ptr+i), seps)) {
-	    continue;
-	}
-	if (!char_in_array(*(*ptr+i+1), seps)) {
-	    elements++;
+    for (i = 0; i < hmm->num_states; i++) {
+	for (j = 0; j < hmm->alphabet_size; j++) {
+	    *HMM_EMISSION_PROB(hmm,i,j) = input_convert(*HMM_EMISSION_PROB(hmm,i,j));
 	}
     }
-    if (*(*ptr+i) == '\0') {
-	*ptr = *ptr+i;
-    } else {
-	*ptr = *ptr+i+1;
-    }
-    return(elements);
 }
 
 struct wfsa *wfsa_read_file(char *filename) {
@@ -266,8 +260,11 @@ struct wfsa *wfsa_read_file(char *filename) {
     for (w = wfsa_char_data, maxstate = 0, maxsymbol = 0; ; ) {
 	lastline = w;
 	elements = line_count_elements(&w);
-	if (elements == 0) {
+	if (elements == -1) {
 	    break;
+	}
+	if (elements == 0) {
+	    continue; /* Comment line */
 	}
 	switch (elements) {
 	case 1:
@@ -275,11 +272,7 @@ struct wfsa *wfsa_read_file(char *filename) {
 	    maxstate = maxstate > finalstate ? maxstate : finalstate;
 	    break;
 	case 2:
-#ifdef MATH_FLOAT
-	    sscanf(lastline, "%i %g", &finalstate, &prob);
-#else
 	    sscanf(lastline, "%i %lg", &finalstate, &prob);
-#endif
 	    maxstate = maxstate > finalstate ? maxstate : finalstate;
 	    break;
 	case 3:
@@ -289,11 +282,7 @@ struct wfsa *wfsa_read_file(char *filename) {
 	    maxsymbol = maxsymbol > symbol ? maxsymbol : symbol;
 	    break;
 	case 4:
-#ifdef MATH_FLOAT
-	    sscanf(lastline, "%i %i %i %g", &source, &target, &symbol, &prob);
-#else
 	    sscanf(lastline, "%i %i %i %lg", &source, &target, &symbol, &prob);
-#endif
 	    maxstate = maxstate > source ? maxstate : source;
 	    maxstate = maxstate > target ? maxstate : target;
 	    maxsymbol = maxsymbol > symbol ? maxsymbol : symbol;
@@ -309,6 +298,9 @@ struct wfsa *wfsa_read_file(char *filename) {
 	lastline = w;
 	elements = line_count_elements(&w);
 	if (elements == 0) {
+	    continue; /* Comment line */
+	}
+	if (elements == -1) {
 	    break;
 	}
 	switch (elements) {
@@ -317,11 +309,7 @@ struct wfsa *wfsa_read_file(char *filename) {
 	    *FINALPROB(fsm, finalstate) = SMRONE_REAL;
 	    break;
 	case 2:
-#ifdef MATH_FLOAT
-	    sscanf(lastline, "%i %g", &finalstate, &prob);
-#else
 	    sscanf(lastline, "%i %lg", &finalstate, &prob);
-#endif
 	    *FINALPROB(fsm, finalstate) = prob;
 	    break;
 	case 3:
@@ -329,11 +317,7 @@ struct wfsa *wfsa_read_file(char *filename) {
 	    *TRANSITION(fsm, source, symbol, target) = SMRONE_REAL;
 	    break;
 	case 4:
-#ifdef MATH_FLOAT
-	    sscanf(lastline, "%i %i %i %g", &source, &target, &symbol, &prob);
-#else
 	    sscanf(lastline, "%i %i %i %lg", &source, &target, &symbol, &prob);
-#endif
 	    *TRANSITION(fsm, source, symbol, target) = prob;
 	    break;
 	default:
@@ -346,144 +330,74 @@ struct wfsa *wfsa_read_file(char *filename) {
     return(fsm);
 }
 
-char *line_to_int_array(char *ptr, int **line, int *size) {
-    /* Reads (destructively) a line of integers (separated by non-integers) and returns a malloced array  */
-    /* of numbers (ints) with the line in it + a size count, and also a pointer to the next line.         */
-    char *nextline, *startptr;
-    int i, j, elements, lastnumber;
-    if (*ptr == '\n') {
-	*line = NULL;
-	*size = 0;
-	return ptr+1;
+struct hmm *hmm_read_file(char *filename) {
+    char *hmm_char_data, *w, *lastline;
+    int elements, source, target, symbol, maxstate, maxsymbol;
+    PROB prob;
+    struct hmm *hmm;
+    if ((hmm_char_data = file_to_mem(filename)) == NULL) {
+	exit(1);
     }
-    for (i = 0, elements = 0; ptr[i] != '\n' && ptr[i] != '\0'; i++) {
-	/* If ptr+i is a digit and ptr+i+1 is not, we've seen a number */
-	if (!isdigit(ptr[i])) {
-	    continue;
+    /* Figure out alphabet size and number of states */
+    for (w = hmm_char_data, maxstate = 0, maxsymbol = 0; ; ) {
+	lastline = w;
+	elements = line_count_elements(&w);
+	if (elements == 0) {
+	    continue; /* Comment line */
 	}
-	if (!isdigit(ptr[i+1])) {
-	    elements++;
-	}
-    }
-    if (ptr[i] == '\0') {
-	nextline = ptr+i;
-    } else {
-	nextline = ptr+i+1;
-    }
-    *size = elements;
-    if (!elements) {
-	return NULL;
-    }
-    *line = malloc(sizeof(int) * elements);
-    for (i = 0, j = 0, lastnumber = 0; ; i++, j++) {
-	/* Find next digit */
-	startptr = ptr + i;
-	while (!isdigit(ptr[i]) && ptr[i] != '\n' && ptr[i] != '\0') {
-	    i++;
-	    startptr = ptr+i;
-	}
-	if (ptr[i] == '\n' || ptr[i] == '\0') {
+	if (elements == -1) {
 	    break;
 	}
-	/* Find number end */
-	while (isdigit(ptr[i])) {
-	    i++;
-	}
-	if (ptr[i] == '\n' || ptr[i] == '\0') {
-	    lastnumber = 1;
-	}
-	ptr[i] = '\0';
-	*(*line+j) = atoi(startptr);
-	if (lastnumber)
+	switch (elements) {
+	case 3:
+	    sscanf(lastline, "%i %i %lg", &source, &symbol, &prob); /* Transition probability */
+	    maxsymbol = maxsymbol > symbol ? maxsymbol : symbol;
+	    maxstate = maxstate > source ? maxstate : source;
+	    maxstate = maxstate > target ? maxstate : target;
+	    maxsymbol = maxsymbol > symbol ? maxsymbol : symbol;
 	    break;
-    }
-    return(nextline);
-}
-
-int obssortcmp(struct observations **a, struct observations **b) {
-    int *one, *two, i;
-    one = (*a)->data; two = (*b)->data;
-    for (i = 0; i < (*a)->size && i < (*b)->size; i++) { 
-	if (*(one+i) < *(two+i)) {
-	    return -1;
-	}
-	if (*(one+i) > *(two+i)) {
-	    return 1;
+	case 4:
+	    sscanf(lastline, "%i > %i %lg", &source, &target, &prob); /* Emission probability */
+	    maxstate = maxstate > source ? maxstate : source;
+	    maxstate = maxstate > target ? maxstate : target;
+	    break;
+	default:
+	    perror("HMM file format error");
+	    free(hmm_char_data);
+	    exit(1);
 	}
     }
-    if ((*a)->size > (*b)->size) {
-	return -1;
-    }
-    if ((*a)->size < (*b)->size) {
-	return 1;
-    }
-    return 0;
-}
 
-int observations_alphabet_size(struct observations *ohead) {
-    int i, maxsigma;
-    for (maxsigma = -1; ohead != NULL ; ohead = ohead->next) {
-	for (i = 0; i < ohead->size; i++) {
-	    maxsigma = *(ohead->data+i) > maxsigma ? *(ohead->data+i) : maxsigma;		
+    hmm = hmm_init(maxstate+1, maxsymbol+1);
+    for (w = hmm_char_data, maxstate = 0, maxsymbol = 0; ; ) {
+	lastline = w;
+	elements = line_count_elements(&w);
+	if (elements == 0) {
+	    continue; /* Comment line */
+	}
+	if (elements == -1) {
+	    break;
+	}
+	switch (elements) {
+	case 3:
+	    sscanf(lastline, "%i %i %lg", &source, &symbol, &prob); /* Transition probability */
+	    *HMM_EMISSION_PROB(hmm, source, symbol) = prob;
+	    break;
+	case 4:
+	    sscanf(lastline, "%i > %i %lg", &source, &target, &prob); /* Emission probability */
+	    *HMM_TRANSITION_PROB(hmm, source, target) = prob;
+	    break;
+	default:
+	    perror("HMM file format error");
+	    free(hmm_char_data);
+	    exit(1);
 	}
     }
-    return(maxsigma+1);
+    free(hmm_char_data);
+    return(hmm);
 }
 
-struct observations **observations_to_array(struct observations *ohead, int *numobs) {
-    int i;
-    struct observations **obsarray, *o;
-    for (o = ohead, i = 0; o != NULL; o = o->next, i++) { }
-    *numobs = i;
-    obsarray = malloc(sizeof(struct observations *) * i) ;
-    for (o = ohead, i = 0; o != NULL; o = o->next, i++) {
-	*(obsarray+i) = o;
-    }
-    return obsarray;
-}
-
-struct observations *observations_uniq(struct observations *ohead) {
-    struct observations *o, *onext;
-    for (o = ohead; o != NULL && o->next != NULL; ) {
-	onext = o->next;
-	if (onext != NULL) {
-	    if (obssortcmp(&o,&onext) == 0) {
-		o->next = onext->next;
-		free(onext->data);
-		free(onext);
-		o->occurrences = o->occurrences + 1;
-		continue;
-	    }
-	}
-	o = o->next;
-    }
-    return (ohead);
-}
-
-struct observations *observations_sort(struct observations *ohead) {
-    struct observations *o, **sptr, *curro, *lasto;
-    int i, numobs;
-    int (*sorter)() = obssortcmp;
-    for (o = ohead, numobs = 0; o != NULL; o = o->next) {
-	numobs++;
-    }
-    if (numobs < 1) {
-	return ohead;
-    }
-    sptr = malloc(sizeof(struct observations *) * numobs);
-    for (o = ohead, i = 0; o != NULL; o = o->next, i++) {
-	*(sptr+i) = o;
-    }
-    qsort(sptr, numobs, sizeof(struct observations *), sorter);
-    for (i = 1, ohead = lasto = *sptr, lasto->next = NULL; i < numobs; i++) {	
-	curro = *(sptr+i);
-	curro->next = NULL;
-	lasto->next = curro;
-	lasto = curro;
-    }
-    return(ohead);
-}
-
+struct wfsa *g_lastwfsa = NULL; /* Stores global pointer to last WFSA to spit out in case of SIGINT */
 void interrupt_sigproc() {
     fprintf(stderr, "Received SIGINT. Exiting.\n");
     if (g_lastwfsa != NULL) {
@@ -492,52 +406,9 @@ void interrupt_sigproc() {
     exit(1);
 }
 
-void observations_destroy(struct observations *ohead) {
-    struct observations *o, *olast;
-    for (o = ohead; o != NULL; ) {
-	olast = o;
-	o = o->next;
-	free(olast->data);
-	free(olast);
-    }
-}
-
-struct observations *observations_read(char *filename) {
-    char *obs_char_data, *optr;
-    struct observations *ohead, *o, *olast;
-    int *line, size;
-    if ((obs_char_data = file_to_mem(filename)) == NULL) {
-	return(NULL);
-    }
-    ohead = olast = NULL;
-    for (optr = obs_char_data, o = ohead ; ;) {
-	if (*optr == '\0') {
-	    break;
-	}
-	optr = line_to_int_array(optr, &line, &size);
-	if (optr == NULL) {
-	    break;
-	}
-	if (olast == NULL) {
-	    ohead = olast = malloc(sizeof(struct observations));
-	    o = olast;
-	} else {
-	    o = malloc(sizeof(struct observations));
-	    olast->next = o;
-	    olast = o;
-	}
-	o->size = size;
-	o->data = line;	
-	o->occurrences = 1;	
-	o->next = NULL;	
-    }
-    free(obs_char_data);
-    return(ohead);
-}
-
 inline PROB log_add(PROB x, PROB y) {
     PROB temp, negdiff;
-    PROB result, result2;
+    PROB result;
     if (x == LOGZERO) return (y);
     if (y == LOGZERO) return (x);
     if (y > x) {
@@ -545,20 +416,15 @@ inline PROB log_add(PROB x, PROB y) {
 	x = y;
 	y = temp;
     }
-
     negdiff = y - x;
-    result2 = (double) log2l(exp2l((long double)negdiff)+1);
     if (negdiff <= -61) { return x; }
 #ifdef LOG_LUT
     result = log1plus_table_interp(negdiff);
 #elif LOG_LIB
     result = log2(exp2(negdiff)+1);
 #else
-    //result = log1plus_taylor(negdiff);
     result = log1plus_minimax(negdiff);
-    //result = log1plus_table_interp(negdiff);
 #endif /* LOG_LUT */
-    //printf("Asked %.17g REAL: %.17g APPROX: %.17g DIFF: %.17g\n",negdiff,result2,result,fabs(fabs(result)-(fabs(result2))));
     return(result+x);
 }
 
@@ -571,8 +437,8 @@ PROB trellis_backward(struct trellis *trellis, int *obs, int length, struct wfsa
     
     /* Fill last and penultimate column */
     for (targetstate = 0; targetstate < fsm->num_states; targetstate++) {
-	TRELLIS_CELL(targetstate,length+1)->bp = smrone;
-	TRELLIS_CELL(targetstate,length)->bp = smrone + *FINALPROB(fsm, targetstate);
+	TRELLIS_CELL(targetstate,length+1)->bp = 0;
+	TRELLIS_CELL(targetstate,length)->bp = 0 + *FINALPROB(fsm, targetstate);
     }
     /* Fill rest */
     for (i = length-1; i >= 0 ; i--) {
@@ -581,7 +447,7 @@ PROB trellis_backward(struct trellis *trellis, int *obs, int length, struct wfsa
 	    TRELLIS_CELL(sourcestate,i)->bp = LOGZERO;
 	    for (targetstate = 0; targetstate < fsm->num_states; targetstate++) {
 		target_prob = *TRANSITION(fsm, sourcestate, symbol, targetstate);
-		if (target_prob <= smrzero) { continue; }
+		if (target_prob <= SMRZERO_LOG) { continue; }
 		TRELLIS_CELL(sourcestate,i)->bp = log_add(TRELLIS_CELL(sourcestate,i)->bp, TRELLIS_CELL(targetstate,i+1)->bp + target_prob);
 	    }
 	}
@@ -598,12 +464,12 @@ PROB trellis_viterbi(struct trellis *trellis, int *obs, int length, struct wfsa 
 	    TRELLIS_CELL(sourcestate,i)->fp = LOGZERO;
     
     /* Calculate first transition */
-    TRELLIS_CELL(0,0)->fp = smrone;
+    TRELLIS_CELL(0,0)->fp = 0;
     for (i = 0; i < 1 && i < length; i++) {
 	symbol = obs[i];
 	for (targetstate = 0; targetstate < fsm->num_states; targetstate++) {
 	    target_prob = *TRANSITION(fsm, 0, symbol, targetstate);
-	    if (target_prob > smrzero) {
+	    if (target_prob > SMRZERO_LOG) {
 		TRELLIS_CELL(targetstate,1)->fp = target_prob;
 		TRELLIS_CELL(targetstate,1)->backstate = 0;
 	    }
@@ -616,7 +482,7 @@ PROB trellis_viterbi(struct trellis *trellis, int *obs, int length, struct wfsa 
 	    if (TRELLIS_CELL(sourcestate,i)->fp == LOGZERO) { continue; }
 	    for (targetstate = 0; targetstate < fsm->num_states; targetstate++) {
 		target_prob = *TRANSITION(fsm, sourcestate, symbol, targetstate);	       
-		if (target_prob <= smrzero) { continue; }
+		if (target_prob <= SMRZERO_LOG) { continue; }
 		if (TRELLIS_CELL(targetstate,(i+1))->fp == LOGZERO) {
 		    TRELLIS_CELL(targetstate,(i+1))->fp = TRELLIS_CELL(sourcestate,i)->fp + target_prob;
 		    TRELLIS_CELL(targetstate,(i+1))->backstate = sourcestate;
@@ -633,12 +499,12 @@ PROB trellis_viterbi(struct trellis *trellis, int *obs, int length, struct wfsa 
     /* Calculate final state probabilities */
     i = length;
     final_state = -1;
-    for (targetstate = 0, final_prob = smrzero; targetstate < fsm->num_states; targetstate++) {
+    for (targetstate = 0, final_prob = SMRZERO_LOG; targetstate < fsm->num_states; targetstate++) {
 	if (TRELLIS_CELL(targetstate,i)->fp == LOGZERO) {
 	    TRELLIS_CELL(targetstate,(i+1))->backstate = -1;
 	    continue;
 	}
-	if (*FINALPROB(fsm, targetstate) > smrzero && TRELLIS_CELL(targetstate,i)->fp > smrzero) { 
+	if (*FINALPROB(fsm, targetstate) > SMRZERO_LOG && TRELLIS_CELL(targetstate,i)->fp > SMRZERO_LOG) { 
 	    TRELLIS_CELL(targetstate,(i+1))->fp = TRELLIS_CELL(targetstate,i)->fp + *FINALPROB(fsm, targetstate);
 	} else {
 	    continue;
@@ -658,7 +524,97 @@ PROB trellis_viterbi(struct trellis *trellis, int *obs, int length, struct wfsa 
     return(final_prob);
 }
 
-PROB trellis_forward(struct trellis *trellis, int *obs, int length, struct wfsa *fsm) {
+PROB trellis_forward_hmm(struct trellis *trellis, int *obs, int length, struct hmm *hmm) {
+    int i, sourcestate, targetstate, symbol, end_state;
+    PROB target_prob, final_prob;
+    
+    end_state = hmm->num_states - 1;
+    for (i = 0; i <= length + 1; i++)
+	for (sourcestate = 0; sourcestate < hmm->num_states; sourcestate++)
+	    TRELLIS_CELL_HMM(sourcestate,i)->fp = LOGZERO;
+    
+    /* Calculate first transition */
+    TRELLIS_CELL_HMM(0,0)->fp = 0;
+    for (targetstate = 1; targetstate < hmm->num_states ; targetstate++) {
+	if (targetstate == end_state && length != 0) {
+	    continue;
+	}
+	target_prob = *HMM_TRANSITION_PROB(hmm, 0, targetstate);
+	if (target_prob > SMRZERO_LOG) {
+	    TRELLIS_CELL_HMM(targetstate,1)->fp = target_prob;
+	    TRELLIS_CELL_HMM(targetstate,1)->backstate = 0;
+	}
+    }
+
+    /* Calculate remaining transitions */
+    for (i = 1; i <= length; i++) {
+	symbol = obs[i-1];
+	for (sourcestate = 1; sourcestate < end_state; sourcestate++) {
+	    if (TRELLIS_CELL_HMM(sourcestate, i)->fp == LOGZERO) { continue; }
+	    for (targetstate = 0; targetstate < hmm->num_states; targetstate++) {
+		if (i != length && targetstate == end_state) {
+		    continue;
+		}
+		target_prob = *HMM_EMISSION_PROB(hmm, sourcestate, symbol) + *HMM_TRANSITION_PROB(hmm, sourcestate, targetstate);
+		if (target_prob <= SMRZERO_LOG) { continue; }
+		TRELLIS_CELL_HMM(targetstate,(i+1))->fp = log_add(TRELLIS_CELL_HMM(sourcestate, i)->fp + target_prob, TRELLIS_CELL_HMM(targetstate,(i+1))->fp);
+	    }
+	}
+    }
+    final_prob = TRELLIS_CELL_HMM(end_state, i)->fp;
+    return(final_prob);
+}
+
+PROB trellis_viterbi_hmm(struct trellis *trellis, int *obs, int length, struct hmm *hmm) {
+    int i, sourcestate, targetstate, symbol, end_state;
+    PROB target_prob, final_prob;
+    
+    end_state = hmm->num_states - 1;
+    for (i = 0; i <= length + 1; i++)
+	for (sourcestate = 0; sourcestate < hmm->num_states; sourcestate++)
+	    TRELLIS_CELL_HMM(sourcestate,i)->fp = LOGZERO;
+    
+    /* Calculate first transition */
+    TRELLIS_CELL_HMM(0,0)->fp = 0;
+    for (targetstate = 1; targetstate < hmm->num_states ; targetstate++) {
+	if (targetstate == end_state && length != 0) {
+	    continue;
+	}
+	target_prob = *HMM_TRANSITION_PROB(hmm, 0, targetstate);
+	if (target_prob > SMRZERO_LOG) {
+	    TRELLIS_CELL_HMM(targetstate,1)->fp = target_prob;
+	    TRELLIS_CELL_HMM(targetstate,1)->backstate = 0;
+	}
+    }
+
+    /* Calculate remaining transitions */
+    for (i = 1; i <= length; i++) {
+	symbol = obs[i-1];
+	for (sourcestate = 1; sourcestate < end_state; sourcestate++) {
+	    if (TRELLIS_CELL_HMM(sourcestate, i)->fp == LOGZERO) { continue; }
+	    for (targetstate = 0; targetstate < hmm->num_states; targetstate++) {
+		if (i != length && targetstate == end_state) {
+		    continue;
+		}
+		target_prob = *HMM_EMISSION_PROB(hmm, sourcestate, symbol) + *HMM_TRANSITION_PROB(hmm, sourcestate, targetstate);
+		if (target_prob <= SMRZERO_LOG) { continue; }
+		if (TRELLIS_CELL_HMM(targetstate, i+1)->fp == LOGZERO) {
+		    TRELLIS_CELL_HMM(targetstate, i+1)->fp = TRELLIS_CELL_HMM(sourcestate, i)->fp + target_prob;
+		    TRELLIS_CELL_HMM(targetstate, i+1)->backstate = sourcestate;
+		} else {
+		    if (TRELLIS_CELL_HMM(targetstate, i+1)->fp < TRELLIS_CELL_HMM(sourcestate,i)->fp + target_prob) {
+			TRELLIS_CELL_HMM(targetstate, i+1)->fp = TRELLIS_CELL_HMM(sourcestate,i)->fp + target_prob;
+			TRELLIS_CELL_HMM(targetstate, i+1)->backstate = sourcestate;
+		    }
+		}
+	    }
+	}
+    }
+    final_prob = TRELLIS_CELL_HMM(end_state, i)->fp;
+    return(final_prob);
+}
+
+PROB trellis_forward_fsm(struct trellis *trellis, int *obs, int length, struct wfsa *fsm) {
     int i, sourcestate, targetstate, symbol;
     PROB target_prob, final_prob;
 
@@ -667,12 +623,12 @@ PROB trellis_forward(struct trellis *trellis, int *obs, int length, struct wfsa 
 	    TRELLIS_CELL(sourcestate,i)->fp = LOGZERO;
     
     /* Calculate first transition */
-    TRELLIS_CELL(0,0)->fp = smrone;
+    TRELLIS_CELL(0,0)->fp = 0;
     for (i = 0; i < 1 && i < length; i++) {
 	symbol = obs[i];
 	for (targetstate = 0; targetstate < fsm->num_states; targetstate++) {
 	    target_prob = *TRANSITION(fsm, 0, symbol, targetstate);
-	    if (target_prob > smrzero) {
+	    if (target_prob > SMRZERO_LOG) {
 		TRELLIS_CELL(targetstate,1)->fp = target_prob;
 		TRELLIS_CELL(targetstate,1)->backstate = 0;
 	    }
@@ -685,7 +641,7 @@ PROB trellis_forward(struct trellis *trellis, int *obs, int length, struct wfsa 
 	    if (TRELLIS_CELL(sourcestate,i)->fp == LOGZERO) { continue; }
 	    for (targetstate = 0; targetstate < fsm->num_states; targetstate++) {
 		target_prob = *TRANSITION(fsm, sourcestate, symbol, targetstate);
-		if (target_prob <= smrzero) { continue; }
+		if (target_prob <= SMRZERO_LOG) { continue; }
 		TRELLIS_CELL(targetstate,(i+1))->fp = log_add(TRELLIS_CELL(sourcestate,i)->fp + target_prob, TRELLIS_CELL(targetstate,(i+1))->fp);
 	    }
 	}
@@ -693,9 +649,9 @@ PROB trellis_forward(struct trellis *trellis, int *obs, int length, struct wfsa 
     
     /* Calculate final state probabilities */
     i = length;
-    for (targetstate = 0, final_prob = smrzero; targetstate < fsm->num_states; targetstate++) {
+    for (targetstate = 0, final_prob = SMRZERO_LOG; targetstate < fsm->num_states; targetstate++) {
 	if (TRELLIS_CELL(targetstate,i)->fp == LOGZERO) { continue; }
-	if (*FINALPROB(fsm, targetstate) > smrzero && TRELLIS_CELL(targetstate,i)->fp > smrzero) {
+	if (*FINALPROB(fsm, targetstate) > SMRZERO_LOG && TRELLIS_CELL(targetstate,i)->fp > SMRZERO_LOG) {
 	    TRELLIS_CELL(targetstate,(i+1))->fp = TRELLIS_CELL(targetstate,i)->fp + *FINALPROB(fsm, targetstate);
 	} else {
 	    continue;
@@ -705,13 +661,23 @@ PROB trellis_forward(struct trellis *trellis, int *obs, int length, struct wfsa 
     return(final_prob);
 }
 
-struct trellis *trellis_init(struct observations *o, struct wfsa *fsm) {
+struct trellis *trellis_init_fsm(struct observations *o, struct wfsa *fsm) {
     int olenmax;
     struct trellis *trellis;
     for (olenmax = 0 ; o != NULL; o = o->next) {
 	olenmax = olenmax < o->size ? o->size : olenmax;
     }
     trellis = calloc((olenmax + 2) * fsm->num_states, sizeof(struct trellis));
+    return(trellis);
+}
+
+struct trellis *trellis_init_hmm(struct observations *o, struct hmm *hmm) {
+    int olenmax;
+    struct trellis *trellis;
+    for (olenmax = 0 ; o != NULL; o = o->next) {
+	olenmax = olenmax < o->size ? o->size : olenmax;
+    }
+    trellis = calloc((olenmax + 2) * hmm->num_states, sizeof(struct trellis));
     return(trellis);
 }
 
@@ -725,13 +691,13 @@ void trellis_print(struct trellis *trellis, struct wfsa *fsm, int obs_len) {
     }
 }
 
-void forward_print_path (struct trellis *trellis, struct wfsa *fsm, int obs_len) {
+void forward_print_path(struct trellis *trellis, struct wfsa *fsm, int obs_len) {
     int i, j, beststate;
     PROB bestprob;
     for (i = 0; i <= obs_len+1; i++) {
 	if (i == obs_len)
 	    continue;
-	bestprob = smrzero;
+	bestprob = SMRZERO_LOG;
 	beststate = -1;
 	for (j = 0; j < fsm->num_states; j++) {
 	    if (TRELLIS_CELL(j,i)->fp == LOGZERO) {
@@ -748,11 +714,35 @@ void forward_print_path (struct trellis *trellis, struct wfsa *fsm, int obs_len)
     printf("\n");
 }
 
-void backward_print_path (struct trellis *trellis, struct wfsa *fsm, int obs_len) {
+void forward_print_path_hmm(struct trellis *trellis, struct hmm *hmm, int obs_len) {
+    int i, j, beststate;
+    PROB bestprob;
+    for (i = 0; i <= obs_len + 1; i++) {
+	if (i == obs_len + 1)
+	    continue;
+	bestprob = SMRZERO_LOG;
+	beststate = -1;
+	for (j = 0; j < hmm->num_states - 1; j++) {
+	    if (TRELLIS_CELL_HMM(j, i)->fp == LOGZERO) {
+		continue;
+	    }
+	    if (TRELLIS_CELL_HMM(j, i)->fp > bestprob) {
+		bestprob = TRELLIS_CELL_HMM(j, i)->fp;
+		beststate = j;
+	    }
+	}
+	printf("%i", beststate);
+	if (i < obs_len + 1) printf(" ");
+    }
+    printf("%i", hmm->num_states - 1);
+    printf("\n");
+}
+
+void backward_print_path(struct trellis *trellis, struct wfsa *fsm, int obs_len) {
     int i, j, beststate;
     PROB bestprob;
     for (i = 0; i <= obs_len; i++) {
-	bestprob = smrzero;
+	bestprob = SMRZERO_LOG;
 	beststate = -1;
 	for (j = 0; j < fsm->num_states; j++) {
 	    if (TRELLIS_CELL(j,i)->bp == LOGZERO) {
@@ -769,22 +759,41 @@ void backward_print_path (struct trellis *trellis, struct wfsa *fsm, int obs_len
     printf("\n");
 }
 
-void viterbi_print_path (struct trellis *trellis, struct wfsa *fsm, int obs_len) {
+void viterbi_print_path(struct trellis *trellis, struct wfsa *fsm, int obs_len) {
     int i, laststate, *path;
     path = malloc(sizeof(int) * (obs_len+1));
     for (i = 0; i < fsm->num_states; i++) {
-	if (TRELLIS_CELL(i,obs_len+1)->backstate != -1) {
+	if (TRELLIS_CELL(i, obs_len+1)->backstate != -1) {
 	    laststate = i;
 	}
     }
     *(path+obs_len) = laststate;
     for (i = obs_len; i > 0; i--) {
-	*(path+i-1) = TRELLIS_CELL(laststate,i)->backstate;
-	laststate = TRELLIS_CELL(laststate,i)->backstate;
+	*(path+i-1) = TRELLIS_CELL(laststate, i)->backstate;
+	laststate = TRELLIS_CELL(laststate, i)->backstate;
     }
     for (i = 0 ; i <= obs_len; i++) {
-	printf("%i",path[i]);
+	printf("%i", path[i]);
 	if (i < obs_len) {
+	    printf(" ");
+	}
+    }
+    printf("\n");
+    free(path);
+}
+
+void viterbi_print_path_hmm(struct trellis *trellis, struct hmm *hmm, int obs_len) {
+    int i, laststate, *path;
+    path = malloc(sizeof(int) * (obs_len + 2));
+    laststate = hmm->num_states - 1;
+    *(path+obs_len+1) = laststate;
+    for (i = obs_len + 1; i > 0; i--) {
+	*(path+i-1) = TRELLIS_CELL_HMM(laststate, i)->backstate;
+	laststate = TRELLIS_CELL_HMM(laststate, i)->backstate;
+    }
+    for (i = 0 ; i <= obs_len + 1; i++) {
+	printf("%i", path[i]);
+	if (i < obs_len + 1) {
 	    printf(" ");
 	}
     }
@@ -796,15 +805,15 @@ void viterbi(struct wfsa *fsm, struct observations *o, int algorithm) {
     struct observations *obs;
     struct trellis *trellis;
     PROB viterbi_prob;
-    trellis = trellis_init(o,fsm);
+    trellis = trellis_init_fsm(o,fsm);
     for (obs = o; obs != NULL; obs = obs->next) {
 	viterbi_prob = trellis_viterbi(trellis, obs->data, obs->size, fsm);
 	if (algorithm == DECODE_VITERBI_PROB)
 	    printf("%.17g\t", output_convert(viterbi_prob));
-	if (algorithm == LIKELIHOOD_VITERBI) 
+	if (algorithm == LIKELIHOOD_VITERBI)
 	    printf("%.17g\n", output_convert(viterbi_prob));
 	if (algorithm == DECODE_VITERBI_PROB || algorithm == DECODE_VITERBI) {
-	    if (viterbi_prob > smrzero) {
+	    if (viterbi_prob > SMRZERO_LOG) {
 		viterbi_print_path(trellis, fsm, obs->size);
 	    } else {
 		printf("\n");
@@ -814,14 +823,60 @@ void viterbi(struct wfsa *fsm, struct observations *o, int algorithm) {
     free(trellis);
 }
 
+void viterbi_hmm(struct hmm *hmm, struct observations *o, int algorithm) {
+    struct observations *obs;
+    struct trellis *trellis;
+    PROB viterbi_prob;
+    trellis = trellis_init_hmm(o, hmm);
+    for (obs = o; obs != NULL; obs = obs->next) {
+	viterbi_prob = trellis_viterbi_hmm(trellis, obs->data, obs->size, hmm);
+	if (algorithm == DECODE_VITERBI_PROB)
+	    printf("%.17g\t", output_convert(viterbi_prob));
+	if (algorithm == LIKELIHOOD_VITERBI)
+	    printf("%.17g\n", output_convert(viterbi_prob));
+	if (algorithm == DECODE_VITERBI_PROB || algorithm == DECODE_VITERBI) {
+	    if (viterbi_prob > SMRZERO_LOG) {
+		viterbi_print_path_hmm(trellis, hmm, obs->size);
+	    } else {
+		printf("\n");
+	    }
+	}
+    }
+    free(trellis);
+}
+
+PROB hmm_sum_transition_prob(struct hmm *hmm, int state) {
+    /* Get sum of probabilities for transition in a state (in reals) */
+    PROB sum;
+    int i;
+    sum = 0;
+    for (i = 0; i < hmm->num_states; i++) {
+	if (EXP(*HMM_TRANSITION_PROB(hmm, state, i) >= SMRZERO_LOG))
+	    sum += EXP(*HMM_TRANSITION_PROB(hmm, state, i));	
+    }
+    return(sum);
+}
+
+PROB hmm_sum_emission_prob(struct hmm *hmm, int state) {
+    /* Get sum of probabilities for emission in a state (in reals) */
+    PROB sum;
+    int i;
+    sum = 0;
+    for (i = 0; i < hmm->alphabet_size; i++) {
+	if (EXP(*HMM_EMISSION_PROB(hmm, state, i) >= SMRZERO_LOG))
+	    sum += EXP(*HMM_EMISSION_PROB(hmm, state, i));
+    }
+    return(sum);
+}
+
 PROB wfsa_sum_prob(struct wfsa *fsm, int state) {
     PROB sum;
     int i, s;
     /* Get sum of probabilities for a state (in reals) */
-    sum = *FINALPROB(fsm,state) >= smrzero ? EXP(*FINALPROB(fsm,state)) : 0;
+    sum = *FINALPROB(fsm,state) >= SMRZERO_LOG ? EXP(*FINALPROB(fsm,state)) : 0;
     for (i = 0; i < fsm->num_states; i++) {
 	for (s = 0 ; s < fsm->alphabet_size; s++) {
-	    if (*TRANSITION(fsm, state, s, i) >= smrzero) {
+	    if (*TRANSITION(fsm, state, s, i) >= SMRZERO_LOG) {
 		sum += EXP(*TRANSITION(fsm, state, s, i));
 	    }
 	}
@@ -830,7 +885,7 @@ PROB wfsa_sum_prob(struct wfsa *fsm, int state) {
 }
 
 int wfsa_random_transition(struct wfsa *fsm, int state, int *symbol, PROB *prob) {
-    /* Choose a random arc from state state           */
+    /* Choose a random arc from state "state"         */
     /* Return target state, and put symbol in *symbol */
     /* If stop: symbol = -1                           */
     PROB thissum, r;
@@ -839,7 +894,7 @@ int wfsa_random_transition(struct wfsa *fsm, int state, int *symbol, PROB *prob)
     r = r * wfsa_sum_prob(fsm, state);
     thissum = 0;
     
-    if (*FINALPROB(fsm,state) >= smrzero) {
+    if (*FINALPROB(fsm,state) >= SMRZERO_LOG) {
 	thissum += EXP(*FINALPROB(fsm, state));
 	if (thissum >= r) {
 	    *symbol = -1;
@@ -849,7 +904,7 @@ int wfsa_random_transition(struct wfsa *fsm, int state, int *symbol, PROB *prob)
     }
     for (i = 0; i < fsm->num_states; i++) {
 	for (s = 0 ; s < fsm->alphabet_size; s++) {
-	    if ((*prob = *TRANSITION(fsm, state, s, i)) >= smrzero) {		
+	    if ((*prob = *TRANSITION(fsm, state, s, i)) >= SMRZERO_LOG) {		
 		thissum += EXP(*prob);
 		if (thissum >= r) {
 		    *symbol = s;
@@ -859,6 +914,48 @@ int wfsa_random_transition(struct wfsa *fsm, int state, int *symbol, PROB *prob)
 	}
     }
     perror("Inconsistent probabilities in FSM");
+    exit(1);
+}
+
+int hmm_random_transition(struct hmm *hmm, int state, PROB *prob) {
+    /* Choose a random arc from state "state"           */
+    /* Return target state, and put probability in prob */
+    PROB thissum, r;
+    int i;
+    r = (PROB) random() / RAND_MAX;
+    r = r * hmm_sum_transition_prob(hmm, state);
+    thissum = 0;
+    
+    for (i = 0; i < hmm->num_states; i++) {
+	if ((*prob = *HMM_TRANSITION_PROB(hmm, state, i)) >= SMRZERO_LOG) {		
+	    thissum += EXP(*prob);
+	    if (thissum >= r) {
+		return(i);
+	    }
+	}
+    }
+    perror("Inconsistent probabilities in HMM");
+    exit(1);
+}
+
+int hmm_random_emission(struct hmm *hmm, int state, PROB *prob) {
+    /* Choose a random symbol to emit from state  */
+    /* Return symbol, and put probability in prob */
+    PROB thissum, r;
+    int i;
+    r = (PROB) random() / RAND_MAX;
+    r = r * hmm_sum_emission_prob(hmm, state);
+    thissum = 0;
+    
+    for (i = 0; i < hmm->alphabet_size; i++) {
+	if ((*prob = *HMM_EMISSION_PROB(hmm, state, i)) >= SMRZERO_LOG) {		
+	    thissum += EXP(*prob);
+	    if (thissum >= r) {
+		return(i);
+	    }
+	}
+    }
+    perror("Inconsistent probabilities in HMM");
     exit(1);
 }
 
@@ -881,8 +978,8 @@ void generate_words(struct wfsa *fsm, int numwords) {
 	    } else {
 		break;
 	    }
-	}
-	printf("%.17g\t",output_convert(totalprob));
+        }
+	printf("%.17g\t", output_convert(totalprob));
 	if (j < g_gen_max_length) {
 	    for (k = 0; k < j; k++) {
 		printf("%i", output[k]);
@@ -907,23 +1004,120 @@ void generate_words(struct wfsa *fsm, int numwords) {
     free(stateseq);
 }
 
-void forward(struct wfsa *fsm, struct observations *o, int algorithm) {
+void generate_words_hmm(struct hmm *hmm, int numwords) {
+    int i, j, k, state, symbol, *output = NULL, *stateseq = NULL;
+    PROB tprob, eprob, totalprob;
+
+    output = malloc(sizeof(int) * g_gen_max_length);
+    stateseq = malloc(sizeof(int) * g_gen_max_length);
+    
+
+    for (i = 0; i < numwords; i++) {	
+	stateseq[0] = 0;
+	totalprob = LOGZERO;
+	for (state = 0, j = 0; j < g_gen_max_length ; j++) {
+	    state = hmm_random_transition(hmm, state, &tprob);
+	    stateseq[j+1] = state;
+	    if (state != hmm->num_states - 1) {
+		symbol = hmm_random_emission(hmm, state, &eprob);
+		output[j] = symbol;
+	    } else {
+		totalprob = (totalprob == LOGZERO) ? tprob : totalprob + tprob;
+		break;
+	    }
+	    totalprob = (totalprob == LOGZERO) ? tprob + eprob : totalprob + tprob + eprob;
+        }
+	printf("%.17g\t", output_convert(totalprob));
+	if (j < g_gen_max_length) {
+	    for (k = 0; k < j; k++) {
+		printf("%i", output[k]);
+		if (k < j-1) {
+		    printf(" ");
+		}
+	    }
+	    printf("\t");
+	    for (k = 0; k <= j + 1; k++) {
+		printf("%i", stateseq[k]);
+		if (k <= j) {
+		    printf(" ");
+		}
+	    }
+	    printf("\n");
+	} else { 
+	    i--; /* Try again, the string is too long... */
+	}
+    }
+    free(output);
+    free(stateseq);
+}
+
+PROB loglikelihood_all_observations_fsm(struct wfsa *fsm, struct observations *o) {
     struct observations *obs;
     struct trellis *trellis;
     PROB forward_prob;
-    trellis = trellis_init(o,fsm);
+    PROB ll;
+    trellis = trellis_init_fsm(o, fsm);
+    for (obs = o, ll = LOGZERO; obs != NULL; obs = obs->next) {
+	forward_prob = obs->occurrences * trellis_forward_fsm(trellis, obs->data, obs->size, fsm);
+	ll = ll == LOGZERO ? forward_prob : ll + forward_prob;
+    }
+    free(trellis);
+    return(ll);
+}
+
+PROB loglikelihood_all_observations_hmm(struct hmm *hmm, struct observations *o) {
+    struct observations *obs;
+    struct trellis *trellis;
+    PROB forward_prob;
+    PROB ll;
+    trellis = trellis_init_hmm(o, hmm);
+    for (obs = o, ll = LOGZERO; obs != NULL; obs = obs->next) {
+	forward_prob = obs->occurrences * trellis_forward_hmm(trellis, obs->data, obs->size, hmm);
+	ll = ll == LOGZERO ? forward_prob : ll + forward_prob;
+    }
+    free(trellis);
+    return(ll);
+}
+
+void forward_hmm(struct hmm *hmm, struct observations *o, int algorithm) {
+    struct observations *obs;
+    struct trellis *trellis;
+    PROB forward_prob;
+    trellis = trellis_init_hmm(o, hmm);
     for (obs = o; obs != NULL; obs = obs->next) {
-	forward_prob = trellis_forward(trellis, obs->data, obs->size, fsm);
+	forward_prob = trellis_forward_hmm(trellis, obs->data, obs->size, hmm);
 	if (algorithm == DECODE_FORWARD_PROB)
 	    printf("%.17g\t", output_convert(forward_prob));
 	if (algorithm == LIKELIHOOD_FORWARD)
 	    printf("%.17g\n", output_convert(forward_prob));
 	if (algorithm == DECODE_FORWARD_PROB || algorithm == DECODE_FORWARD) {
-	    if (forward_prob > smrzero) {
+	    if (forward_prob > SMRZERO_LOG) {
+		forward_print_path_hmm(trellis, hmm, obs->size);
+	    } else {
+		printf("\n");
+	    }
+	}
+    }
+    free(trellis);
+}
+
+void forward_fsm(struct wfsa *fsm, struct observations *o, int algorithm) {
+    struct observations *obs;
+    struct trellis *trellis;
+    PROB forward_prob;
+    trellis = trellis_init_fsm(o, fsm);
+    for (obs = o; obs != NULL; obs = obs->next) {
+	forward_prob = trellis_forward_fsm(trellis, obs->data, obs->size, fsm);
+	if (algorithm == DECODE_FORWARD_PROB)
+	    printf("%.17g\t", output_convert(forward_prob));
+	if (algorithm == LIKELIHOOD_FORWARD)
+	    printf("%.17g\n", output_convert(forward_prob));
+	if (algorithm == DECODE_FORWARD_PROB || algorithm == DECODE_FORWARD) {
+	    if (forward_prob > SMRZERO_LOG) {
 		forward_print_path(trellis, fsm, obs->size);
 	    } else {
 		printf("\n");
-	    }	
+	    }
 	}
     }
     free(trellis);
@@ -933,7 +1127,7 @@ void backward(struct wfsa *fsm, struct observations *o, int algorithm) {
     struct observations *obs;
     struct trellis *trellis;
     PROB backward_prob;
-    trellis = trellis_init(o,fsm);
+    trellis = trellis_init_fsm(o,fsm);
     for (obs = o; obs != NULL; obs = obs->next) {
 	backward_prob = trellis_backward(trellis, obs->data, obs->size, fsm);
 	if (algorithm == DECODE_BACKWARD_PROB)
@@ -941,7 +1135,7 @@ void backward(struct wfsa *fsm, struct observations *o, int algorithm) {
 	if (algorithm == LIKELIHOOD_BACKWARD)
 	    printf("%.17g\n", output_convert(backward_prob));
 	if (algorithm == DECODE_BACKWARD_PROB || algorithm == DECODE_BACKWARD) {
-	    if (backward_prob > smrzero) {
+	    if (backward_prob > SMRZERO_LOG) {
 		backward_print_path(trellis, fsm, obs->size);
 	    } else {
 		printf("\n");
@@ -956,7 +1150,7 @@ PROB train_viterbi(struct wfsa *fsm, struct observations *o, int maxiterations, 
     struct trellis *trellis;
     int i,j,k,iter, source, target, laststate, symbol, occurrences, *fsm_vit_counts, *fsm_vit_totalcounts, *fsm_vit_finalcounts;
     PROB viterbi_prob, loglikelihood, prevloglikelihood, newprob;
-    trellis = trellis_init(o,fsm);
+    trellis = trellis_init_fsm(o,fsm);
     fsm_vit_counts = malloc(sizeof(int) * fsm->num_states * fsm->num_states * fsm->alphabet_size);
     fsm_vit_totalcounts = malloc(sizeof(int) * fsm->num_states);
     fsm_vit_finalcounts = malloc(sizeof(int) * fsm->num_states);
@@ -974,7 +1168,7 @@ PROB train_viterbi(struct wfsa *fsm, struct observations *o, int maxiterations, 
         for (obs = o; obs != NULL; obs = obs->next) {
 	    occurrences = obs->occurrences;
             viterbi_prob = trellis_viterbi(trellis, obs->data, obs->size, fsm);
-            if (viterbi_prob <= smrzero) {
+            if (viterbi_prob <= SMRZERO_LOG) {
                 continue;
             } else {
                 loglikelihood += viterbi_prob * occurrences;
@@ -1010,11 +1204,11 @@ PROB train_viterbi(struct wfsa *fsm, struct observations *o, int maxiterations, 
         for (i=0; i < fsm->num_states; i++) {
 	    fsm_vit_totalcounts[i] += g_viterbi_pseudocount * fsm->alphabet_size * fsm->num_states + g_viterbi_pseudocount;
             for (j = 0; j < fsm->alphabet_size; j++) {
-                for (k = 0; k < fsm->num_states; k++) {		    
+                for (k = 0; k < fsm->num_states; k++) {
                     if (fsm_vit_totalcounts[i] > 0) {
                         newprob = LOG(*FSM_COUNTS(fsm_vit_counts,i,j,k) + g_viterbi_pseudocount) - LOG(fsm_vit_totalcounts[i]);
                     } else {
-                        newprob = smrzero;
+                        newprob = SMRZERO_LOG;
                     }
                     *(TRANSITION(fsm,i,j,k)) = newprob;
                 }
@@ -1024,7 +1218,7 @@ PROB train_viterbi(struct wfsa *fsm, struct observations *o, int maxiterations, 
             if (fsm_vit_totalcounts[i] > 0) {
                 newprob = LOG(fsm_vit_finalcounts[i] + g_viterbi_pseudocount) - LOG(fsm_vit_totalcounts[i]);
             } else {
-                newprob = smrzero;
+                newprob = SMRZERO_LOG;
             }
             *(fsm->final_table + i) = newprob;
         }
@@ -1038,7 +1232,7 @@ PROB train_viterbi(struct wfsa *fsm, struct observations *o, int maxiterations, 
 
 inline void spinlock_lock(_Bool *ptr) {
     if (g_num_threads > 1)
-    	while (__sync_lock_test_and_set(ptr,1)) { }
+    	while (__sync_lock_test_and_set(ptr, 1)) { }
 }
 
 inline void spinlock_unlock(_Bool *ptr) {
@@ -1047,6 +1241,7 @@ inline void spinlock_unlock(_Bool *ptr) {
 }
 
 void *trellis_fill_bw(void *threadargs) {
+    pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
     struct trellis *trellis;
     struct observations **obsarray, *obs;
     struct wfsa *fsm;
@@ -1065,7 +1260,7 @@ void *trellis_fill_bw(void *threadargs) {
 	occurrences = obs->occurrences;
 	/* E-step */
 	backward_prob = trellis_backward(trellis, obs->data, obs->size, fsm);
-	forward_prob = trellis_forward(trellis, obs->data, obs->size, fsm);
+	forward_prob = trellis_forward_fsm(trellis, obs->data, obs->size, fsm);
 	pthread_mutex_lock(&mutex1);
 	g_loglikelihood += backward_prob * occurrences;
 	pthread_mutex_unlock(&mutex1);
@@ -1076,14 +1271,12 @@ void *trellis_fill_bw(void *threadargs) {
 		if (TRELLIS_CELL(source,t)->fp == LOGZERO) { continue; }
 		for (target = 0; target < fsm->num_states; target++) {
 		    if (TRELLIS_CELL(target,t+1)->bp == LOGZERO) { continue; }
-		    if (*TRANSITION(fsm,source,symbol,target) <= smrzero) { continue; }
+		    if (*TRANSITION(fsm,source,symbol,target) <= SMRZERO_LOG) { continue; }
 		    thisxi = TRELLIS_CELL(source,t)->fp + *TRANSITION(fsm,source,symbol,target) + TRELLIS_CELL(target,t+1)->bp;
 		    thisxi = thisxi - backward_prob;
 		    thisxi = g_train_da_bw == 0 ? thisxi : thisxi * beta;
 		    thisxi += LOG(occurrences);
-
 		    spinlock_lock(&fsm_counts_spin[source]);
-		    fsm_totalcounts[source] = log_add(fsm_totalcounts[source], thisxi);
 		    *FSM_COUNTS(fsm_counts,source,symbol,target) = log_add(*FSM_COUNTS(fsm_counts,source,symbol,target), thisxi);
 		    spinlock_unlock(&fsm_counts_spin[source]);
 		}
@@ -1100,7 +1293,6 @@ void *trellis_fill_bw(void *threadargs) {
 	    thisxi += LOG(occurrences);
 
 	    spinlock_lock(&fsm_counts_spin[source]);
-	    fsm_totalcounts[source] = log_add(fsm_totalcounts[source], thisxi);
 	    fsm_finalcounts[source] = log_add(fsm_finalcounts[source], thisxi);
 	    spinlock_unlock(&fsm_counts_spin[source]);
 	}
@@ -1121,7 +1313,7 @@ PROB train_baum_welch(struct wfsa *fsm, struct observations *o, int maxiteration
     
     /* Each thread gets its own trellis */
     for (i = 0; i < g_num_threads; i++) {
-	trellis = trellis_init(o,fsm);
+	trellis = trellis_init_fsm(o,fsm);
 	trellisarray[i] = trellis;
 	threadargs[i] = malloc(sizeof(struct thread_args));
     }
@@ -1154,7 +1346,7 @@ PROB train_baum_welch(struct wfsa *fsm, struct observations *o, int maxiteration
     for (iter = 0 ; iter < maxiterations ; iter++) {
 	g_loglikelihood = 0;
 	for (i = 0; i < fsm->num_states * fsm->num_states * fsm->alphabet_size ; i++) { fsm_counts[i] = LOGZERO; }
-	for (i = 0; i < fsm->num_states ; i++) { fsm_totalcounts[i] =  fsm_finalcounts[i] = LOGZERO; }
+	for (i = 0; i < fsm->num_states ; i++) { fsm_finalcounts[i] = LOGZERO; }
 	for (i = 1; i < g_num_threads; i++) {
 	    /* Launch threads */
 	    threadargs[i]->beta = da_beta;
@@ -1188,39 +1380,27 @@ PROB train_baum_welch(struct wfsa *fsm, struct observations *o, int maxiteration
 	/* Modify WFSA (M-step) */
 	signal(SIGINT, SIG_IGN); /* Disable interrupts to prevent corrupted WFSA in case of SIGINT while updating */	    
         
-	/* if (vb == 1) { */
-	/*     for (source = 0; source < fsm->num_states; source++) { */
-	/* 	fsm_totalcounts[source] = LOGZERO; */
-	/* 	for (symbol = 0; symbol < fsm->alphabet_size; symbol++) {		 */
-	/* 	    for (target = 0; target < fsm->num_states; target++) { */
-	/* 		newprob = *FSM_COUNTS(fsm_counts,source,symbol,target); */
-	/* 		if (newprob == LOGZERO) { */
-	/* 		    continue; */
-	/* 		} */
-	/* 		newprob = digamma(myexp(log_add(newprob, LOG(g_vb_alpha))))/M_LN2; */
-	/* 		*FSM_COUNTS(fsm_counts,source,symbol,target) = newprob; */
-	/* 		fsm_totalcounts[source] = log_add(fsm_totalcounts[source], newprob); */
-	/* 	    } */
-	/* 	} */
-	/*     } */
-	/*     for (source = 0; source < fsm->num_states; source++) { */
-	/* 	newprob = fsm_finalcounts[source]; */
-	/* 	if (newprob == LOGZERO) { */
-	/* 	    continue; */
-	/* 	}		 */
-	/* 	newprob = digamma(myexp(log_add(newprob, LOG(g_vb_alpha))))/M_LN2; */
-	/* 	fsm_totalcounts[source] = log_add(fsm_totalcounts[source], newprob); */
-	/* 	fsm_finalcounts[source] = newprob; */
-	/*     } */
-	/* } */
 	numstatetrans = fsm->num_states * fsm->alphabet_size + 1;
+
+	/* Sum counts */
+	for (i = 0; i < fsm->num_states ; i++) { fsm_totalcounts[i] = LOGZERO; }
+	for (source = 0; source < fsm->num_states; source++) {
+	    for (symbol = 0; symbol < fsm->alphabet_size; symbol++) {
+		for (target = 0; target < fsm->num_states; target++) {
+		    fsm_totalcounts[source] = log_add(*FSM_COUNTS(fsm_counts,source,symbol,target), fsm_totalcounts[source]);
+		}
+	    }
+	}
+	for (source = 0; source < fsm->num_states; source++) {
+	    fsm_totalcounts[source] = log_add(fsm_finalcounts[source], fsm_totalcounts[source]);
+	}
 
 	for (source = 0; source < fsm->num_states; source++) {
 	    for (symbol = 0; symbol < fsm->alphabet_size; symbol++) {
 		for (target = 0; target < fsm->num_states; target++) {
 		    newprob = *FSM_COUNTS(fsm_counts,source,symbol,target);
-		    if (newprob == LOGZERO) { newprob = smrzero; }
-		    /* Variational Bayes */
+		    if (newprob == LOGZERO) { newprob = SMRZERO_LOG; }
+		    /* Variational Bayes: apply digamma function to count */
 		    if (vb) {
 			*TRANSITION(fsm,source,symbol,target) = (digamma(EXP(newprob) + g_vb_alpha) - digamma(EXP(fsm_totalcounts[source]) + numstatetrans * g_vb_alpha))/M_LN2;
 		    } else {
@@ -1231,7 +1411,7 @@ PROB train_baum_welch(struct wfsa *fsm, struct observations *o, int maxiteration
 	}
 	for (source = 0; source < fsm->num_states; source++) {
 	    newprob = fsm_finalcounts[source];
-	    if (newprob == LOGZERO) { newprob = smrzero; }
+	    if (newprob == LOGZERO) { newprob = SMRZERO_LOG; }
 	    /* Variational Bayes */
 	    if (vb) {
 		*FINALPROB(fsm,source) = (digamma(EXP(newprob) + g_vb_alpha) - digamma(EXP(fsm_totalcounts[source]) + numstatetrans * g_vb_alpha))/M_LN2;
@@ -1297,226 +1477,17 @@ PROB train_viterbi_bw(struct wfsa *fsm, struct observations *o) {
     return(ll);
 }
 
-struct gibbs_state_chain {
-    int state;
-    int sym;
-};
-
-struct gibbs_state_chain *gibbs_init(struct observations *o, int num_states, int alphabet_size, int *obslen) {
-    int i,j,*data;
-    struct gibbs_state_chain *go;
-    struct observations *tempo;
-
-    /* Initialize the sequence of observations for Gibbs sampling */
-    /* It's a simple array of two ints, like so:                  */
-
-    /*        0     ...  obslen-1                                 */ 
-    /*     --------     --------                                  */
-    /*     |state |     |state |                                  */
-    /*     |sym   |     |sym   |                                  */
-    /*     --------     --------                                  */
-    
-    /* We chain together multiple observations into one big       */
-    /* observation by adding the symbol # at the end of each o    */
-    /* which transitions to state 0. State 0 after # is never     */
-    /* resampled. Also, we augment the alphabet by one to         */
-    /* accommodate for #. After sampling, # represents the        */
-    /* halting probability at that state, and is removed when     */
-    /* constructing an automaton based on the samples taken.      */
-
-    for (tempo = o, (*obslen) = 0; tempo != NULL; tempo = tempo->next, (*obslen)++) {
-	(*obslen) += tempo->size;
-    }
-    (*obslen)++;
-
-    go = malloc(sizeof(struct gibbs_state_chain) * (*obslen));
-
-    for (j = 0; o != NULL; o = o->next) {
-	data = o->data;
-	/* First state is always 0 */
-	(go+j)->state = 0;
-	for (i = 0; i < o->size; i++) {
-	    if (i > 0) {
-		(go+j)->state = rand_int_range(0,num_states);
-	    }
-	    /* Add transition */
-	    (go+j)->sym = *(data+i);
-	    j++;
-	}
-	(go+j)->state = rand_int_range(0,num_states);
-	(go+j)->sym = alphabet_size;
-	j++;
-    }
-    (go+j)->state = 0;
-    (go+j)->sym = -1; /* sentinel */
-    return(go);
-}
-
-int gibbs_weighted_select(PROB *weight_list, PROB weight_sum, int num_elements) {
-
-    /* Do a weighted selection of num_elements, each with their own */
-    /* weight specified in the array prob_list                      */
-    /* The sum of all weights should be given in weight_sum         */
-
-    int i;
-    PROB select;
-    select = rand_double() * weight_sum;
-    for (i = 0; i < num_elements; i++) {
-	select -= weight_list[i];
-	if (select < 0)
-	    return i;
-    }
-    perror("Something is rotten with gibbs_weighted_select(). Shouldn't have reached here.");
-    return i;
-}
-
-PROB gibbs_sampler(struct wfsa *fsm, struct observations *o, double beta, int num_states, int maxiter, int burnin, int lag) {
-
-  /* Macros to access counts easily */
-  #define Ccurr(SOURCE_STATE, SYMBOL, TARGET_STATE) (*((gibbs_counts) + (num_states * alphabet_size * (SOURCE_STATE) + (SYMBOL) * num_states + (TARGET_STATE))))
-
-  #define Ctimestamp(SOURCE_STATE, SYMBOL, TARGET_STATE) (*((gibbs_timestamps) + (num_states * alphabet_size * (SOURCE_STATE) + (SYMBOL) * num_states + (TARGET_STATE))))
-
-  #define Csampled(SOURCE_STATE, SYMBOL, TARGET_STATE) (*((gibbs_sampled_counts) + (num_states * alphabet_size * (SOURCE_STATE) + (SYMBOL) * num_states + (TARGET_STATE))))
-
-    int i, j, k, l, obslen, alphabet_size, z, zprev, znext, a, aprev, anext, indicator, newstate, samplecount;
-    unsigned int steps, *gibbs_counts, *gibbs_counts_states, *gibbs_sampled_counts, *gibbs_counts_sampled_states, *gibbs_timestamps;
-    PROB ANbeta, g_k, g_sum, *current_prob;
-    struct gibbs_state_chain *chain;
-	
-    alphabet_size = g_alphabet_size + 1; /* Use extra symbol for end-of-word (#) */
-    /* Build initial array of states */
-    chain = gibbs_init(o, num_states, g_alphabet_size, &obslen);
-    gibbs_counts = calloc(num_states * num_states * alphabet_size, sizeof(int));
-    gibbs_sampled_counts = calloc(num_states * num_states * alphabet_size, sizeof(int));
-    gibbs_timestamps = calloc(num_states * num_states * alphabet_size, sizeof(int));
-    gibbs_counts_states = calloc(num_states, sizeof(int));
-    gibbs_counts_sampled_states = calloc(num_states, sizeof(int));
-    current_prob = calloc(num_states, sizeof(PROB));
-
-    /* Initialize timestamps to 0 */
-    for (i = 0 ; i < num_states * num_states * alphabet_size; i++)
-	gibbs_timestamps[i] = 0;
-
-    /* Accumulate initial counts from initial random sequence */
-    for (i = 0; i < obslen-1; i++) {
-	Ccurr( (chain+i)->state , (chain+i)->sym, (chain+i+1)->state)++;
-	gibbs_counts_states[(chain+i)->state]++;
-    }
-
-    ANbeta = alphabet_size * num_states * beta;
-
-    for (i = 0, samplecount = 1, steps = 0; i < maxiter; i++) {
-	if (i > 0 && i % 100 == 0) {
-	    fprintf(stderr, "Iteration: %i  Samples collected: %i\n", i, samplecount-1);
-	}
-	for (j = 0; j < obslen; j++) {
-	    if (j == 0 || (chain+j-1)->sym == g_alphabet_size) { /* Don't resample "initial" states */
-		continue;
-	    }
-	    a = (chain+j)->sym;          /* Current symbol  */
-	    aprev = (chain+j-1)->sym;    /* Previous symbol */
-	    z = (chain+j)->state;        /* Current state   */
-	    zprev = (chain+j-1)->state;  /* Previous state  */
-	    znext = (chain+j+1)->state;  /* Next state      */
-
-	    /* Settle up with total counts depending on timestamp */
-	    if (Ctimestamp(zprev,aprev,z) != samplecount) {
-		Csampled(zprev,aprev,z) += ( samplecount - Ctimestamp(zprev,aprev,z) ) * Ccurr(zprev,aprev,z);
-		Ctimestamp(zprev,aprev,z) = samplecount;
-	    }
-	    if (Ctimestamp(z,a,znext) != samplecount) {
-		Csampled(z,a,znext) += ( samplecount - Ctimestamp(z,a,znext) ) * Ccurr(z,a,znext);
-		Ctimestamp(z,a,znext) = samplecount;
-	    }
-
-	    /* Adjust counts */
-	    Ccurr(zprev,aprev,z)--;
-	    Ccurr(z,a,znext)--;
-	    Csampled(zprev,aprev,z)--;
-	    Csampled(z,a,znext)--;
-
-	    gibbs_counts_states[z]--;
-
-	    for (k = 0, g_sum = 0; k < num_states; k++) {
-		/* Sample */
-		indicator = (k == zprev && aprev == a && znext == k) ? 1 : 0;
-		g_k = (((double)Ccurr(k,a,znext)) + beta + indicator) * (((double)Ccurr(zprev,aprev,k)) + beta) / ((double)gibbs_counts_states[k] + ANbeta);
-		if (g_k < 0) {
-		    exit(0);
-		}
-		current_prob[k] = g_k;
-		g_sum += g_k;
-	    }
-	    /* Do #num_states-way weighted coin toss to select new state */
-	    newstate = gibbs_weighted_select(current_prob, g_sum, num_states);
-
-	    /* Settle up with total counts depending on timestamp */
-	    if (Ctimestamp(zprev,aprev,newstate) != samplecount) {
-		Csampled(zprev,aprev,newstate) += ( samplecount - Ctimestamp(zprev,aprev,newstate) ) * Ccurr(zprev,aprev,newstate);
-		Ctimestamp(zprev,aprev,newstate) = samplecount;
-	    }
-	    if (Ctimestamp(newstate,a,znext) != samplecount) {
-		Csampled(newstate,a,znext) += ( samplecount - Ctimestamp(newstate,a,znext) ) * Ccurr(newstate,a,znext);
-		Ctimestamp(newstate,a,znext) = samplecount;
-	    }
-	    Ccurr(zprev,aprev,newstate)++;
-	    Ccurr(newstate,a,znext)++;
-	    Csampled(zprev,aprev,newstate)++;
-	    Csampled(newstate,a,znext)++;
-
-	    gibbs_counts_states[newstate]++;
-	    (chain+j)->state = newstate;
-	    steps++;
-	    if (i > burnin && steps % lag == 0) {
-		/* Update samplecount: sample count table entries will be updated */
-		/* as we go along based on the timestamp                          */
-		samplecount++;
-	    }
-	}
-    }
-    /* Settle all remaining debts Ccurr has with Csampled depending on timestamps */
-    for (l = 0; l < num_states * num_states * alphabet_size; l++) {
-	gibbs_sampled_counts[l] += ( samplecount - gibbs_timestamps[l] ) * gibbs_counts[l];
-    }
-
-    /* Construct WFSA */
-    for (i = 0 ; i < num_states; i++) {
-	for (j = 0; j < num_states; j++) {
-	    for (k = 0; k < alphabet_size; k++) {
-		gibbs_counts_sampled_states[i] += Csampled(i,k,j);
-	    }
-	}
-    }
-    for (i = 0 ; i < num_states; i++) {
-	for (j = 0; j < num_states; j++) {
-	    for (k = 0; k < alphabet_size; k++) {
-		if (k == alphabet_size - 1) {
-		    *FINALPROB(fsm,i) += ((double)Csampled(i,k,j) + beta) / ((double)gibbs_counts_sampled_states[i] + ANbeta);
-		} else {		    
-		    *(TRANSITION(fsm,i,k,j)) = log2(((double)Csampled(i,k,j) + beta) / ((double)gibbs_counts_sampled_states[i] + ANbeta));
-		}
-	    }
-	}
-    }
-    for (i = 0; i < num_states; i++)
-	*FINALPROB(fsm,i) = log2(*FINALPROB(fsm,i));
-
-    free(chain);
-    free(gibbs_counts);
-    free(gibbs_sampled_counts);
-    free(gibbs_counts_states);
-    free(gibbs_counts_sampled_states);
-    free(current_prob);
-    return(0.0); /* log likelihood */
-}
-
 int main(int argc, char **argv) {
-    int opt, algorithm = 0, numelem, obs_alphabet_size;
+    int opt, option_index = 0, algorithm = 0, numelem, obs_alphabet_size, use_cuda = 0, use_hmm = 0, statemergetest = MERGE_TEST_ALERGIA, recursive_merge_test = 0;
     char *fsmfile = NULL, optionchar;
-    struct wfsa *fsm;
+    PROB ll;
+    struct wfsa *fsm = NULL;
+    struct hmm *hmm = NULL;
     struct observations *o = NULL;
-	
+    srandom((unsigned int)time((time_t *)NULL));
+    srand48((unsigned int)time((time_t *)NULL));
+    statemergetest = MERGE_TEST_ALERGIA;
+
     log1plus_taylor_init();
 #ifdef _WIN32
     SYSTEM_INFO sysinfo;
@@ -1526,10 +1497,37 @@ int main(int argc, char **argv) {
     g_numcpus = (int) sysconf(_SC_NPROCESSORS_ONLN);
 #endif
 
-    srandom((unsigned int)time((time_t *)NULL));
-    srand48((unsigned int)time((time_t *)NULL));
+static struct option long_options[] =
+	{
+	    {"annealing-params",required_argument, 0, 'a'},
+	    {"burnin",          required_argument, 0, 'b'},
+	    {"max-delta",       required_argument, 0, 'd'},
+	    {"file",            required_argument, 0, 'f'},
+	    {"initialize",      required_argument, 0, 'g'},
+	    {"help",                  no_argument, 0, 'h'},
+	    {"lag",             required_argument, 0, 'l'},
+	    {"input-format",    required_argument, 0, 'i'},
+	    {"output-format",   required_argument, 0, 'o'},
+	    {"prior",           required_argument, 0, 'p'},
+	    {"restarts",        required_argument, 0, 'r'},
+	    {"threads",         required_argument, 0, 't'},
+	    {"uniform-probs",         no_argument, 0, 'u'},
+	    {"version",               no_argument, 0, 'v'},
+	    {"max-iterations",  required_argument, 0, 'x'},
+	    {"t0",              required_argument, 0, 'y'},
+	    {"alpha",           required_argument, 0, 'A'},
+	    {"cuda",                  no_argument, 0, 'C'},
+	    {"decode",          required_argument, 0, 'D'},
+	    {"generate",        required_argument, 0, 'G'},
+	    {"hmm",                   no_argument, 0, 'H'},
+	    {"likelihood",      required_argument, 0, 'L'},
+	    {"merge-test",      required_argument, 0, 'M'},
+	    {"recursive-merge",       no_argument, 0, 'R'},
+	    {"train",           required_argument, 0, 'T'},
+	    {0, 0, 0, 0}
+	};
 
-    while ((opt = getopt(argc, argv, "uhva:b:d:f:l:i:o:p:r:g:t:x:G:T:L:D:")) != -1) {
+ while ((opt = getopt_long(argc, argv, "a:b:d:f:g:hl:i:o:p:r:t:uvx:y:A:CD:G:HL:M:RT:", long_options, &option_index)) != -1) {
 	switch(opt) {
 	case 'v':
 	    printf("This is %s\n", versionstring);
@@ -1541,20 +1539,16 @@ int main(int argc, char **argv) {
 	    g_initialize_uniform = 1;
 	    break;
 	case 'a':
-#ifdef MATH_FLOAT
-	    numelem = sscanf(optarg,"%g,%g,%g",&g_betamin,&g_betamax,&g_alpha);
-#else
 	    numelem = sscanf(optarg,"%lg,%lg,%lg",&g_betamin,&g_betamax,&g_alpha);
-#endif
 	    if (numelem < 3) {
-		printf("-a option requires betamin,betamax,alpha\n"); 
+		fprintf(stderr, "-a option requires betamin,betamax,alpha\n"); 
 		exit(1);
 	    }
 	    break;
 	case 'r':
 	    numelem = sscanf(optarg,"%i,%i",&g_random_restarts,&g_random_restart_iterations);
 	    if (numelem < 1) {
-		printf("-r option requires #num restarts[,#num iterations per restart]\n"); 
+		fprintf(stderr, "-r option requires #num restarts[,#num iterations per restart]\n"); 
 		exit(1);
 	    }
 	    break;
@@ -1564,11 +1558,11 @@ int main(int argc, char **argv) {
 	    case 'b': g_generate_type = GENERATE_BAKIS; break;
 	    case 'd': g_generate_type = GENERATE_DETERMINISTIC; break;
 	    case 'n': g_generate_type = GENERATE_NONDETERMINISTIC; break;
-	    default: printf("-g option requires b|d|n\n"); exit(1);
+	    default: fprintf(stderr, "-g option requires b|d|n\n"); exit(EXIT_FAILURE);
 	    }
-			
+
 	    if (numelem < 2) { printf("Error in option -g\n"); exit(1); }
-	    if (numelem < 3) { g_alphabet_size = -1;}
+	    if (numelem < 3) { g_alphabet_size = -1; }
 	    break;
 	case 't':
 	    if (strncmp(optarg,"c/",2) == 0) {
@@ -1580,8 +1574,21 @@ int main(int argc, char **argv) {
 	    }
 	    if (g_num_threads <= 0) { g_num_threads = 1; }
 	    break;
+	case 'y':
+	    g_t0 = atoi(optarg);
 	case 'd':
-	    g_maxdelta = strtod(optarg,NULL);
+	    g_maxdelta = strtod(optarg, NULL);
+	    break;
+	case 'R':
+	    recursive_merge_test = 1;
+	    break;
+	case 'M':
+	    if (strcmp(optarg,"alergia") == 0)  { statemergetest = MERGE_TEST_ALERGIA;    }
+	    if (strcmp(optarg,"chi2") == 0)     { statemergetest = MERGE_TEST_CHISQUARED; }
+	    if (strcmp(optarg,"lr") == 0)       { statemergetest = MERGE_TEST_LR;         }
+	    if (strcmp(optarg,"binomial") == 0) { statemergetest = MERGE_TEST_BINOMIAL;   }
+	    if (strcmp(optarg,"exactm") == 0)   { statemergetest = MERGE_TEST_EXACT_M;    }
+	    if (strcmp(optarg,"exactb") == 0)   { statemergetest = MERGE_TEST_EXACT_B;    }
 	    break;
 	case 'i':
 	    if (strcmp(optarg,"real") == 0)   {  g_input_format = FORMAT_REAL;   }
@@ -1604,10 +1611,14 @@ int main(int argc, char **argv) {
 	case 'f':
 	    fsmfile = strdup(optarg);
 	    break;
+	case 'A':
+	    g_merge_alpha = strtod(optarg, NULL);
+	    break;
 	case 'p':
 	    g_viterbi_pseudocount = atoi(optarg);
-	    g_vb_alpha = strtod(optarg,NULL);
-	    g_gibbs_beta = strtod(optarg,NULL);			
+	    numelem = sscanf(optarg,"%lg,%lg",&g_gibbs_beta,&g_gibbs_beta_emission);
+	    g_vb_alpha = g_gibbs_beta;
+	    g_merge_prior = g_gibbs_beta;
 	    break;
 	case 'b':
 	    g_gibbs_burnin = atoi(optarg);
@@ -1618,114 +1629,139 @@ int main(int argc, char **argv) {
 	case 'x':
 	    g_maxiterations = atoi(optarg);
 	    break;
+	case 'C':
+#ifdef USE_CUDA
+	    use_cuda = 1;
+#else
+	    perror("CUDA support not compiled");
+            exit(EXIT_FAILURE);
+#endif /* USE_CUDA */
+	    break;
+	case 'H':
+	    use_hmm = 1;
+	    break;
 	case 'G':
 	    g_generate_words = atoi(optarg);
 	    algorithm = GENERATE_WORDS;
 	    break;
 	case 'T':
-	    if (strcmp(optarg,"vit") == 0)
-		algorithm = TRAIN_VITERBI;
-	    if (strcmp(optarg,"bw") == 0)
-		algorithm = TRAIN_BAUM_WELCH;
-	    if (strcmp(optarg,"gs") == 0)
-		algorithm = TRAIN_GIBBS_SAMPLING;
+	    if (strcmp(optarg,"merge") == 0) { algorithm = TRAIN_MERGE;          }
+	    if (strcmp(optarg,"mdi") == 0)   { algorithm = TRAIN_MDI;            }
+	    if (strcmp(optarg,"vit") == 0)   { algorithm = TRAIN_VITERBI;        }
+	    if (strcmp(optarg,"bw") == 0)    { algorithm = TRAIN_BAUM_WELCH;     }
+	    if (strcmp(optarg,"gs") == 0)    { algorithm = TRAIN_GIBBS_SAMPLING; }
 	    if (strcmp(optarg,"vb") == 0) {
 		algorithm = TRAIN_VARIATIONAL_BAYES;
 		g_bw_vb = 1;
 	    }
-	    if (strcmp(optarg,"vitbw") == 0)
-		algorithm = TRAIN_VITERBI_BW;
+	    if (strcmp(optarg,"vitbw") == 0)  { algorithm = TRAIN_VITERBI_BW;    }
 	    if (strcmp(optarg,"dabw") == 0) {
-		algorithm = TRAIN_DA_BAUM_WELCH;
+	        algorithm = TRAIN_DA_BAUM_WELCH;
 		g_train_da_bw = 1;
 	    }
 	    break;
 	case 'L':
-	    if (strcmp(optarg,"vit") == 0)
-		algorithm = LIKELIHOOD_VITERBI;
-	    if (strcmp(optarg,"f") == 0)
-		algorithm = LIKELIHOOD_FORWARD;
-	    if (strcmp(optarg,"b") == 0)
-		algorithm = LIKELIHOOD_BACKWARD;
+	    if (strcmp(optarg,"vit") == 0) { algorithm = LIKELIHOOD_VITERBI;  }
+	    if (strcmp(optarg,"f") == 0)   { algorithm = LIKELIHOOD_FORWARD;  }
+	    if (strcmp(optarg,"b") == 0)   { algorithm = LIKELIHOOD_BACKWARD; }
 	    break;
 	case 'D':
-	    if (strcmp(optarg,"vit") == 0)
-		algorithm = DECODE_VITERBI;
-	    if (strcmp(optarg,"vit,p") == 0)
-		algorithm = DECODE_VITERBI_PROB;
-	    if (strcmp(optarg,"f") == 0)
-		algorithm = DECODE_FORWARD;
-	    if (strcmp(optarg,"f,p") == 0)
-		algorithm = DECODE_FORWARD_PROB;
-	    if (strcmp(optarg,"b") == 0)
-		algorithm = DECODE_BACKWARD;
-	    if (strcmp(optarg,"b,p") == 0)
-		algorithm = DECODE_BACKWARD_PROB;
+	    if (strcmp(optarg,"vit") == 0)   { algorithm = DECODE_VITERBI;       }
+	    if (strcmp(optarg,"vit,p") == 0) { algorithm = DECODE_VITERBI_PROB;  }
+	    if (strcmp(optarg,"f") == 0)     { algorithm = DECODE_FORWARD;       }
+	    if (strcmp(optarg,"f,p") == 0)   { algorithm = DECODE_FORWARD_PROB;  }
+	    if (strcmp(optarg,"b") == 0)     { algorithm = DECODE_BACKWARD;      }
+	    if (strcmp(optarg,"b,p") == 0)   { algorithm = DECODE_BACKWARD_PROB; }
 	    break;
 	}
     }
     argc -= optind;
     argv += optind;
 
+    if (use_hmm && algorithm != TRAIN_GIBBS_SAMPLING && algorithm != LIKELIHOOD_FORWARD && algorithm != DECODE_VITERBI && algorithm != LIKELIHOOD_VITERBI && algorithm != DECODE_VITERBI_PROB && algorithm != DECODE_FORWARD && algorithm != DECODE_FORWARD_PROB && algorithm != GENERATE_WORDS) {
+	printf("%i", algorithm);
+	perror("HMMs are currently only supported for Gibbs Sampling and decoding and likelihood calculations");
+	exit(EXIT_FAILURE);
+    }
     if (argc < 1 && ((algorithm && algorithm != GENERATE_WORDS) || (g_alphabet_size < 0 && fsmfile == NULL))) {
-	printf("Missing observation filename\n");
-	printf("Usage: %s",usagestring);
-	exit(1);
+	fprintf(stderr, "Missing observation filename\n");
+	fprintf(stderr, "Usage: %s",usagestring);
+	exit(EXIT_FAILURE);
     }
     if (argc > 0) {
 	if ((o = observations_read(argv[0])) == NULL) {
 	    perror("Error reading observations file");	    
-	    exit(1);
+	    exit(EXIT_FAILURE);
 	}
 	obs_alphabet_size = observations_alphabet_size(o);
     }
-    if (fsmfile == NULL && g_generate_type == 0) {
-	printf("You must either specify a FSM file with -f, or initialize a random FSM with -g\n");
-	exit(1);
+    if (fsmfile == NULL && g_generate_type == 0 && (algorithm != TRAIN_MERGE && algorithm != TRAIN_MDI)) {
+	perror("You must either specify a FSM file with -f, or initialize a random FSM with -g");
+	exit(EXIT_FAILURE);
     }
     if (g_alphabet_size < 0 && o != NULL) {
 	g_alphabet_size = obs_alphabet_size;
     }
     if (g_generate_type > 0) {
-	fsm = wfsa_init(g_num_states, g_alphabet_size);
-	if (algorithm != TRAIN_GIBBS_SAMPLING) {
+	if (!use_hmm) {
+	    fsm = wfsa_init(g_num_states, g_alphabet_size);
+	}
+	if (use_hmm) {
+	    hmm = hmm_init(g_num_states, g_alphabet_size);
+	}
+	if (algorithm != TRAIN_GIBBS_SAMPLING) { /* For Gibbs, we don't initialize anything, just get size */
 	    if (g_generate_type == GENERATE_NONDETERMINISTIC)
-		wfsa_randomize_nondeterministic(fsm,0,g_initialize_uniform);
+		wfsa_randomize_nondeterministic(fsm, 0, g_initialize_uniform);
 	    if (g_generate_type == GENERATE_DETERMINISTIC)
-		wfsa_randomize_deterministic(fsm,g_initialize_uniform);
+		wfsa_randomize_deterministic(fsm, g_initialize_uniform);
 	    if (g_generate_type == GENERATE_BAKIS)
-		wfsa_randomize_nondeterministic(fsm,1,g_initialize_uniform);
+		wfsa_randomize_nondeterministic(fsm, 1, g_initialize_uniform);
 	    wfsa_to_log2(fsm);
 	}
     }
 
     if (fsmfile != NULL) {
-	fsm = wfsa_read_file(fsmfile);
+	if (!use_hmm)
+	    fsm = wfsa_read_file(fsmfile);
+	else
+	    hmm = hmm_read_file(fsmfile);
 	if (g_input_format != FORMAT_LOG2) {
-	    wfsa_to_log2(fsm);
+	    if (!use_hmm)
+		wfsa_to_log2(fsm);
+	    else
+		hmm_to_log2(hmm);
 	}
     }
-    if (o != NULL && fsm->alphabet_size < obs_alphabet_size) {
-	printf("Error: the observations file has symbols outside the FSA alphabet.\n");
-	printf("Observations alphabet size %i, FSA alphabet size: %i.\n", fsm->alphabet_size, obs_alphabet_size);
+    if (o != NULL && ((fsm != NULL && fsm->alphabet_size < obs_alphabet_size) | (hmm != NULL && hmm->alphabet_size < obs_alphabet_size))) {
+	fprintf(stderr, "Error: the observations file has symbols outside the FSA alphabet.\n");
+	fprintf(stderr, "FSA alphabet size: %i  Observations alphabet size %i.\n", fsm->alphabet_size, obs_alphabet_size);
 	exit(1);
     }
-	
+
     log1plus_init();
 	
     switch (algorithm) {
     case GENERATE_WORDS:
-	generate_words(fsm,g_generate_words);
+	if (!use_hmm)
+	    generate_words(fsm, g_generate_words);
+	else
+	    generate_words_hmm(hmm, g_generate_words);
 	break;
     case DECODE_VITERBI:
     case DECODE_VITERBI_PROB:
     case LIKELIHOOD_VITERBI:
-	viterbi(fsm,o,algorithm);
+	if (!use_hmm)
+	    viterbi(fsm, o, algorithm);
+	else
+	    viterbi_hmm(hmm, o, algorithm);
 	break;
     case DECODE_FORWARD:
     case DECODE_FORWARD_PROB:
     case LIKELIHOOD_FORWARD:
-	forward(fsm,o,algorithm);
+	if (!use_hmm)
+	    forward_fsm(fsm, o, algorithm);
+	else
+	    forward_hmm(hmm, o, algorithm);
 	break;
     case DECODE_BACKWARD:
     case DECODE_BACKWARD_PROB:
@@ -1752,17 +1788,59 @@ int main(int argc, char **argv) {
 	train_viterbi_bw(fsm,o);
 	wfsa_print(fsm);
 	break;
-    case TRAIN_GIBBS_SAMPLING:
+    case TRAIN_MERGE:
 	o = observations_sort(o);
-	gibbs_sampler(fsm, o, g_gibbs_beta, g_num_states, g_maxiterations, g_gibbs_burnin, g_gibbs_lag);
+	o = observations_uniq(o);
+	fsm = dffa_to_wfsa(dffa_state_merge(o, g_merge_alpha, statemergetest, recursive_merge_test));
+	ll = loglikelihood_all_observations_fsm(fsm,o);
+	fprintf(stderr, "loglikelihood=%.17g\n", ll);
 	wfsa_print(fsm);
 	break;
-    default:
+    case TRAIN_MDI:
+	o = observations_sort(o);
+	o = observations_uniq(o);
+	fsm = dffa_to_wfsa(dffa_mdi(o, g_merge_alpha));
+	ll = loglikelihood_all_observations_fsm(fsm,o);
+	fprintf(stderr, "loglikelihood=%.17g\n", ll);
 	wfsa_print(fsm);
+	break;
+    case TRAIN_GIBBS_SAMPLING:
+	o = observations_sort(o);
+	if (!use_hmm) {
+	    if (!use_cuda) {
+		ll = gibbs_sampler_fsm(fsm, o, g_gibbs_beta, g_num_states, g_maxiterations, g_gibbs_burnin, g_gibbs_lag);
+	    } else {
+		#ifdef USE_CUDA
+		fprintf(stderr, "Launching CUDA.\n");
+		ll = gibbs_sampler_cuda_fsm(fsm, o, g_gibbs_beta, g_num_states, g_maxiterations, g_gibbs_burnin, g_gibbs_lag);
+		#endif
+	    }
+	    fprintf(stderr, "loglikelihood=%.17g\n", ll);
+	    wfsa_print(fsm);
+	} else {
+	    if (!use_cuda) {
+		ll = gibbs_sampler_hmm(hmm, o, g_gibbs_beta_emission, g_gibbs_beta, g_num_states, g_maxiterations, g_gibbs_burnin, g_gibbs_lag);
+	    } else {
+		#ifdef USE_CUDA
+		fprintf(stderr, "Launching CUDA.\n");
+		ll = gibbs_sampler_cuda_hmm(hmm, o, g_gibbs_beta_emission, g_gibbs_beta, g_num_states, g_maxiterations, g_gibbs_burnin, g_gibbs_lag);
+		#endif
+	    }
+	    fprintf(stderr, "loglikelihood=%.17g\n", ll);
+	    hmm_print(hmm);
+	}
+	break;
+    default:
+	if (use_hmm)
+	    hmm_print(hmm);
+	else
+	    wfsa_print(fsm);
     }
     log1plus_free();
     if (fsm != NULL)
 	wfsa_destroy(fsm);
+    if (hmm != NULL)
+	hmm_destroy(hmm);
     if (o != NULL)
 	observations_destroy(o);
     exit(0);
