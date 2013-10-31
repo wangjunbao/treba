@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*   treba - probabilistic finite-state automaton training and decoding   */
+/*   treba - probabilistic FSM and HMM training and decoding              */
 /*   Copyright © 2012 Mans Hulden                                         */
 
 /*   This file is part of treba.                                          */
@@ -17,6 +17,8 @@
 /*   along with treba.  If not, see <http://www.gnu.org/licenses/>.       */
 /**************************************************************************/
 
+/* Numerical algorithms, including fast log2 approximations */
+
 /******************************************************************************/
 /* Minimax approximation of log2(exp2(x)+1) through 4th order polynomial.     */
 /* Coefficients are chosen by intervals: [-1,0],[-2,-1],[-3,-2],...[-61,-60]  */
@@ -25,6 +27,7 @@
 /******************************************************************************/
 
 #include <assert.h>
+#include <math.h>
 
 inline PROB log1plus_minimax(PROB x) {
 
@@ -95,7 +98,7 @@ inline PROB log1plus_minimax(PROB x) {
     double xsq;
     ptr = -(int)(x);
 
-    /* Estrin form of polynomial: e·x^4  + (dx + c)·x^2  + (bx + a) */
+    /* Estrin form of polynomial: ex^4  + (dx + c)x^2  + (bx + a) */
     xsq = x*x;
     return(mm[ptr][4]*xsq*xsq + (mm[ptr][3]*x+mm[ptr][2]) * xsq + (mm[ptr][1] * x + mm[ptr][0]));
 
@@ -171,13 +174,6 @@ void ln1plus_taylor_init(void) {
     }
 }
 
-
-
-//2term  (1/(4 + 4 *coshl(n)))
-//1term  1/(1+e^-n) - 2*n/(4 + 4 * coshl(n))
-//0term  log1pl(expl(n)) - n/(1+expl(-n)) + n*n/(4 + 4 * coshl(n))
-
-
 double log1plus_taylor(double x) {
     double result;
     int ptr;
@@ -205,31 +201,11 @@ void log1plus_taylor_init(void) {
     }
 }
 
-inline double flog2(double x) {
-    union { double   d ; uint64_t ui ; } temp = { x };
-    union { uint64_t ui; double   d  ; } mant = { (temp.ui & 0xFFFFFFFFFFFFF)|(0x3ff0000000000000) };
-    double km = temp.ui;
-    /* multiply cast by 2^-52, now km = exponent + mantissa + 1023 */
-    km *= 1.0 / ((uint64_t)1 << 52);
-    return(km -1021.0376485365500900 - 1.4521234221210833001/(0.31669599314060688986 + 0.68330400685939311014 * mant.d) + (-0.47060015051526240876 - 0.039624056254597363217 * mant.d) * mant.d);
-}
-
-inline double expdigamma(double x) {
-    /* 6th order Taylor approx */
-    return(11520*x*x*x*x*x*x / (5 + 2*x * (47 + 120*x * (3 + 2*x * (5 + 12 * x * (1 + 2 * x))))));
-    // return(11520 * x*x*x*x*x*x/(11520*x*x*x*x*x+5760*x*x*x*x+2400*x*x*x+720*x*x+94*x+5));
-}
-
-inline double expdigamma_sloppy(double x) {
-    /* General lenient subtraction that is asymptotically x - w, w = 0.5 here to simulate exp-digamma */
-    return(x*x / (0.5 + x + (2 * 0.5/x)));
-}
-
 /* Mark Johnson's digamma approx. */
 inline double digamma(double x) {
     double result = 0, xx, xx2, xx4;
     if (x == 0) {
-	return smrzero;
+	return SMRZERO_LOG;
     }
     for ( ; x < 7; ++x)
 	result -= 1/x;
@@ -239,4 +215,126 @@ inline double digamma(double x) {
     xx4 = xx2*xx2;
     result += log(x)+(1./24.)*xx2-(7.0/960.0)*xx4+(31.0/8064.0)*xx4*xx2-(127.0/30720.0)*xx4*xx4;
     return result;
+}
+
+/* Approximation of inverse chi-square (Weiss and Greenhall, 1996) */
+/* Restrictions: df >= 1 and 0.005 <= p <= 0.995                   */
+/* df can in theory be nonintegral, but we define it as int here.  */
+/* Returns, given the desired p-value and a degree of freedom df,  */
+/* the corresponding chi-square value.                             */
+/* Max. error of approximation is 3%                               */
+
+double chiinv(double p, int df) {
+    double a, A, G, g, y, u, c1, c2, c3, c4, c5, x;
+    double p1, a0, a1, b1, b2, t, X, s, b ;
+    int k, n, i;
+    p = 1-p;
+    if (p <= 0.5 && df <= 10) {
+	c1 = -0.5748646; c2 =  0.9512363; c3 = -0.6998588; c4 =  0.4245549; c5 = -0.1010678;
+	a = (double)df / 2;
+	n = (int) a;
+	y = a - (double)n;
+	G = 1 + y * (c1 + y * (c2 + y * (c3 + y * (c4 + y * c5))));
+	for (k = 1; k <= n ; k++) {
+	    G = G * (y + (double)k);
+	}
+	A = p * G;
+	u = 0;
+	for (i = 0; i <= 7; i++) {
+	    g = 1 + (u/(a+1)) * ( 1 + (u/(a+2)) * (1 + (u/(a+3)) ));
+	    u = pow((A * exp(u)/g), 1/a);
+	}
+	x = 2 * u;
+    } else {
+	a0 = 2.30753; a1 = 0.27601; b1 = 0.99229; b2 = 0.04481;
+	p1 = fmin(p, 1 - p);
+	t = sqrt(-2 * log(p1));
+	X = t - (a0 + a1 * t)/(1 + b1 * t + b2 * t * t);
+	s = ( (p-0.5) > 0 ) - ( (p-0.5) < 0 ); /* sign(p-0.5) */
+	b = 2/(9 * (double)df);
+	x = (double)df * pow((1 - b + s * X * sqrt(b)),3);
+    }
+    return (x);
+}
+
+#include <math.h>
+#include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
+#include <gsl/gsl_sf_gamma.h>
+#include <gsl/gsl_cdf.h>
+
+double approx_binomial_test(double p, int successes, int failures) {
+    double z, x;
+    z = ((double)successes/(double)(successes+failures) - p)/(sqrt(p*(1-p)/(double)(successes+failures)));
+    x = 1 - fabs(gsl_cdf_ugaussian_P(z) - gsl_cdf_ugaussian_P(-z));
+    return(x);
+}
+
+double exact_binomial_test(double p, int successes, int failures) {
+    int N, i;
+    double p0, p1, logfactsize, logp, logq, mass;
+    N = successes + failures;
+    logp = log(p);
+    logq = log(1-p);
+    logfactsize = gsl_sf_lnfact(N);
+    p0 = successes * logp + (N-successes) * logq + logfactsize - (gsl_sf_lnfact(successes) + gsl_sf_lnfact(N-successes)); 
+    for (i = 0, mass = 0; i < N; i++) {
+	p1 = i * logp + (N-i) * logq + logfactsize - (gsl_sf_lnfact(i) + gsl_sf_lnfact(N-i));
+	if (p1 <= p0) {
+	    mass += exp(p1);
+	}
+    }
+    return(mass);
+}
+
+/* Use the test np +- STDDEV * sqrt(npq) which should return      */
+/* values between 0 and n for binomial approximation to be valid. */
+
+double flex_binomial_test(double p, int successes, int failures) {
+    double n, t1, t2;
+    n = (double)successes + failures;
+    t1 = (n * p - 5 * sqrt(n * p * (1-p)));
+    t2 = (n * p + 5 * sqrt(n * p * (1-p)));
+    if (t1 < 0 || t1 > n || t2 < 0 || t2 > n) {
+	return (exact_binomial_test(p,successes,failures));
+    } 
+    return (approx_binomial_test(p,successes,failures));
+}
+
+/* Do an MC multinomial goodness-of-fit test on the data in the array c */
+/* The corresponding probabilities of H_0 are given in the array p      */
+/* Returns: p-value                                                     */
+
+double monte_carlo_multinomial_test(unsigned int *c0, double *p, int size, int iterations) {
+    int i, iter, less, more, c0sum;
+    unsigned int *c1;
+    double p0, p1, *logpi, logfactsize;
+    gsl_rng *rng = gsl_rng_alloc(gsl_rng_taus);
+    gsl_rng_set(rng, time (NULL) * getpid());
+    less = 0; more = 0; c0sum = 0;
+    c1 = malloc(size * sizeof(int));
+    logpi = malloc(size * sizeof(double));
+    p0 = logfactsize = gsl_sf_lnfact(size);
+    for (i = 0; i < size; i++) {
+	logpi[i] = log(p[i]);
+	c0sum += c0[i];
+	p0 += c0[i] * logpi[i] - gsl_sf_lnfact(c0[i]);
+    }
+    /* Generate array c0 from multinomial p      */
+    /* iter times, and calculate the probability */
+     for (iter = 0; iter < iterations; iter++) {
+	gsl_ran_multinomial(rng, size, c0sum, p, c1);
+	p1 = logfactsize;
+	for (i = 0; i < size; i++) {
+	    p1 += c1[i] * logpi[i] - gsl_sf_lnfact(c1[i]);
+	}
+	if (p1 <= p0) {
+	    less++;
+	} else {
+	    more++;
+	}
+    }
+    free(c1);
+    free(logpi);
+    return((double)less/(double)(less+more));
 }
