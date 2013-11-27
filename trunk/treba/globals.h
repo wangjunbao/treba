@@ -7,7 +7,8 @@ int g_maxiterations = 20000;
 PROB g_maxdelta = 0.1;
 int g_input_format = FORMAT_REAL;
 int g_output_format = FORMAT_REAL;
-int g_viterbi_pseudocount = 1;
+PROB g_viterbi_pseudocount = 1;
+PROB g_viterbi_pseudocount_emit = 1;
 int g_random_restarts = 0;
 int g_random_restart_iterations = 3;
 int g_generate_type = 0;
@@ -23,11 +24,9 @@ int g_num_threads = 1;
 PROB g_betamin = 0.02;
 PROB g_betamax = 1;
 PROB g_alpha = 1.01;
-/* Variational Bayes Dirichlet parameter */
-PROB g_vb_alpha = 0.02;
-/* Collapsed Gibbs sampling concentration, lag, burnin parameters */
-PROB g_gibbs_beta = 0.02;          /* For PFSA transitions, HMM transitions */
-PROB g_gibbs_beta_emission = 0.01; /* For HMM emissions */
+/* Collapsed Gibbs sampling concentration, lag, burnin parameters, also Variational bayes priors (Dirichlet parameter) */
+PROB g_gibbs_beta = 0.02;          /* For PFSA transitions, HMM transitions, VB transition prior */
+PROB g_gibbs_beta_emission = 0.01; /* For HMM emissions, VB emission prior */
 int g_gibbs_lag = 10;
 int g_gibbs_burnin = 100;
 /* Flag whether to adjust counts in BW by VB strategy */
