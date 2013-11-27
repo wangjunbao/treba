@@ -107,11 +107,11 @@ static char *helpstring =
 PROB g_loglikelihood = 0;
 
 #ifdef USE_CUDA
- static char *versionstring = "treba v1.0 (compiled with CUDA support)";
+ static char *versionstring = "treba v1.01 (compiled with CUDA support)";
  extern double gibbs_sampler_cuda_fsm(struct wfsa *fsm, struct observations *o, double beta, int num_states, int maxiter, int burnin, int lag);
  extern double gibbs_sampler_cuda_hmm(struct hmm *hmm, struct observations *o, double beta_t, double beta_e, int num_states, int maxiter, int burnin, int lag);
 #else
- static char *versionstring = "treba v1.0 (compiled without CUDA support)";
+ static char *versionstring = "treba v1.01 (compiled without CUDA support)";
 #endif /* USE_CUDA */
 
 PROB rand_double() {
