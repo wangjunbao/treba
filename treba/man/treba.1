@@ -1,4 +1,4 @@
-\.TH treba 1 "October 31, 2013"
+\.TH treba 1 "November 27, 2013"
 .SH NAME
 treba \- probabilistic finite-state automaton training and decoding
 .SH SYNOPSIS
@@ -143,24 +143,25 @@ The following illustrates a HMM:
 \f(CW      2 1 0.08\fR\br
 .PP
 
-That is, transitions are specified with lines of the format SOURCE-STATE > TARGET-STATE TRANSITION-PROBABILITY, and emissions with lines of the format STATE SYMBOL EMISSION-PROBABILITY.
+That is, transitions in HMMs are specified with lines of the format SOURCE-STATE > TARGET-STATE TRANSITION-PROBABILITY, and emissions with lines of the format STATE SYMBOL EMISSION-PROBABILITY.
 
 .TP
 .BI \--initialize=TYPE-NUMSTATES[,NUMSYMBOLS]
 Generate an initial automaton of type
 .I type
 for training.  The type is a combination of an option letter and the number of the states and the alphabet of the format
-.B b|d|n#states(,#numsymbols)
+.B [b|d]#states(,#numsymbols)
 Here, 
 .B b 
 will generate a Bakis (left-to-right) automaton, 
 .B d 
 a deterministic automaton, and 
-.B n 
-a fully connected (ergodic) nondeterministic automaton.  If
+the default with no specification generates a fully connected (ergodic) nondeterministic automaton.  If
 .B numsymbols 
 is omitted, the necessary alphabet size will be deduced from the observation file.  For example, 
-.B --initialize=n20,10
+.B --initialize=20
+will generate an initial fully connected random automaton with 20 states, inferring the necessary alphabet size from the data while
+.B --initialize=20,10
 will generate an initial fully connected random automaton with 20 states and force the alphabet to be of size 10 symbols whereas
 .B --initialize=b10
 will generate a Bakis automaton with 10 states, and the alphabet size is deduced from the largest symbol in the observations file.
@@ -187,7 +188,7 @@ Maximum number of iterations in training.  Default is 20000.  Note that treba wi
 .BI \--prior=PRIOR1[,PRIOR2]
 Priors to use in various contexts: the Dirichlet prior in Gibbs sampling, a smoothing prior in merging algorithms, or pseudocounts to use in Viterbi training to prevent paths of probability zero. For HMMs, two priors are usually specified, where the first one is state-to-state transition prior, and the second one is the emission prior, e.g. --prior=0.1,0.2
 .BI \--merge=ALGORITHM
-Choose merging algorithm, one of alergia,chi2,lr,binomial,exactm,exact.
+Choose merging algorithm, one of alergia,chi2,lr,binomial,exactm,exact (ALERGIA default Hoeffding bound, chi-squared test, likelihood ratio, binomial test, exact multinomial test, exact test).
 .BI \--alpha=VALUE
 This is the main parameter for state merging algorithms. Default is 0.05.
 .BI \--t0=VALUE
@@ -233,8 +234,10 @@ and likewise
 .B --threads=c1 
 to use all but one of the available CPUs/cores. Default value is 1.
 .SH EXAMPLE USAGE
-.IP "treba --train=bw --initialize=n10 sentences.txt"
+.IP "treba --train=bw --initialize=10 sentences.txt"
 Reads all the sentences from sentences.txt and trains a 10-state probabilistic automaton using Baum-Welch using the default training parameters.  The initial automaton has random probabilities on its transitions and fully connected.
+.IP "treba --hmm --train=bw --initialize=25 sentences.txt"
+Reads all the sentences from sentences.txt and trains a 25-state HMM using Baum-Welch using the default training parameters.  The initial automaton has random probabilities on its transitions and fully connected.
 .IP "treba --hmm --train=gs --initialize=n20 sentences.txt"
 Reads all the sentences from sentences.txt and trains a 20-state HMM with Gibbs sampling using the default parameters of burn-in, lag, and maximum iterations.
 .IP "treba --cuda --train=gs --initialize=n40 --burnin=1000 --lag=100 --max-iter=10000 sentences.txt"
@@ -262,9 +265,17 @@ No real action: myfsm.fsm is read (inputs are real-valued) and converted to nega
 
 http://treba.googlecode.com
 
+Baum, L. E., T. Petrie, G. Soules, and N. Weiss. (1970). A maximization technique occurring in the statistical analysis of probabilistic functions of Markov chains. Annals of Mathematical Statistics, vol. 41, no. 1, pages. 164\(en171.
+
+Carrasco, R. C., & Oncina, J. (1994). Learning stochastic regular grammars by means of a state merging method. In Grammatical Inference and Applications (pp. 139\(en-152). Springer.
+
 de la Higuera, C. (2010). Grammatical Inference: Learning Automata and Grammars.  Cambridge University Press.
 
 Dempster, A., N. Laird, and D. Rubin. (1977). Maximum likelihood estimation from incomplete data via the EM algorithm. Journal of the Royal Statistical Society B, 39:1\(en38.
+
+Hulden, M. (2012). Treba: Efficient Numerically Stable EM for PFA. Journal of Machine Learning Research Workshop and Conference Proceedings, Vol. 21: ICGI 2012: 249\(en-253.
+
+MacKay, D. J. (1997). Ensemble learning for hidden Markov models. Technical report, Cavendish Laboratory, University of Cambridge.
 
 Rabiner, L. R. (1989). A tutorial on Hidden Markov Models and selected applications in speech recognition.  Proc. of the IEEE, 77(2):257\(en286.
 
@@ -272,7 +283,13 @@ Rao, A. and K. Rose. (2001). Deterministically annealed design of Hidden Markov 
 
 Rose, K. (1998). Deterministic annealing for clustering, compression, classification, regression, and related optimization problems. Proc. of the IEEE, 86(11):2210\(en2239.
 
+Shibata, C., & Yoshinaka, R. (2012). Marginalizing Out Transition Probabilities for Several Subclasses of PFAs. Journal of Machine Learning Research Workshop and Conference Proceedings, Vol. 21: ICGI 2012: 259\(en-263.
+
+Thollard, F., P. Dupont, and C. de la Higuera. (2000). Probabilistic DFA inference using Kullback-Leibler divergence and minimality. In Proceedings of the 17th International Conference on Machine Learning:975\(en–982. Morgan Kaufmann: San Francisco.
+
 Ueda, N. and Nakano, R. (1998). Deterministic annealing EM algorithm. Neural Networks, 11(2):271\(en282.
+
+Verwer, S., Eyraud, R., and de la Higuera, C. (2012). Pautomac: a PFA/HMM learning competition. In Proceedings of the 11th International Conference on Grammatical Inference.
 
 Smith, N. A. and Eisner, J. (2004). Annealing techniques for unsupervised statistical language learning. In Proc. of the ACL, pages 486\(en493.
 

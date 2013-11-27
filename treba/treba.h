@@ -73,8 +73,8 @@ typedef double PROB;
 #define TRANSITION(FSM, SOURCE_STATE, SYMBOL, TARGET_STATE) ((FSM)->state_table + (FSM)->num_states * (FSM)->alphabet_size * (SOURCE_STATE) + (SYMBOL) * (FSM)->num_states + (TARGET_STATE))
 #define FSM_COUNTS(FSMC, SOURCE_STATE, SYMBOL, TARGET_STATE) ((FSMC) + (fsm->num_states * fsm->alphabet_size * (SOURCE_STATE) + (SYMBOL) * fsm->num_states + (TARGET_STATE)))
 
-#define HMM_TRANSITION_COUNTS(HMMC, SOURCE_STATE, TARGET_STATE) (((HMMC)->transition_table) + ((HMMC)->num_states * (SOURCE_STATE) + (TARGET_STATE)))
-#define HMM_EMISSION_COUNTS(HMMC, STATE, SYMBOL) (((HMMC)->emission_table) + ((HMMC)->alphabet_size * (STATE) + (SYMBOL)))
+#define HMM_TRANSITION_COUNTS(HMMC, SOURCE_STATE, TARGET_STATE) ((HMMC) + (hmm->num_states * (SOURCE_STATE) + (TARGET_STATE)))
+#define HMM_EMISSION_COUNTS(HMMC, STATE, SYMBOL) ((HMMC) + (hmm->alphabet_size * (STATE) + (SYMBOL)))
 
 #define HMM_TRANSITION_PROB(HMM, SOURCE_STATE, TARGET_STATE) ((HMM)->transition_table + (HMM)->num_states * (SOURCE_STATE) + (TARGET_STATE))
 #define HMM_EMISSION_PROB(HMM, STATE, SYMBOL) ((HMM)->emission_table + (HMM)->alphabet_size * (STATE) + (SYMBOL))
@@ -84,6 +84,8 @@ typedef double PROB;
 
 PROB *fsm_counts, *fsm_totalcounts, *fsm_finalcounts;
 _Bool *fsm_counts_spin;
+PROB *hmm_counts_trans, *hmm_counts_emit, *hmm_totalcounts_trans, *hmm_totalcounts_emit;
+_Bool *hmm_counts_spin;
 
 //pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
 
@@ -93,7 +95,7 @@ struct thread_args {
     struct observations **obsarray;
     int minobs;
     int maxobs;
-    struct wfsa *fsm;
+    void *fsmhmm;
     PROB beta;
 };
 
@@ -199,8 +201,7 @@ PROB trellis_backward(struct trellis *trellis, int *obs, int length, struct wfsa
 PROB trellis_viterbi(struct trellis *trellis, int *obs, int length, struct wfsa *fsm);
 PROB trellis_forward_fsm(struct trellis *trellis, int *obs, int length, struct wfsa *fsm);
 PROB trellis_forward_hmm(struct trellis *trellis, int *obs, int length, struct hmm *hmm);
-struct trellis *trellis_init_fsm(struct observations *o, struct wfsa *fsm);
-struct trellis *trellis_init_hmm(struct observations *o, struct hmm *hmm);
+struct trellis *trellis_init(struct observations *o, int num_states);
 void trellis_print(struct trellis *trellis, struct wfsa *fsm, int obs_len);
 
 /* Trellis path printing functions */
@@ -211,10 +212,13 @@ void viterbi_print_path(struct trellis *trellis, struct wfsa *fsm, int obs_len);
 /* Main decoding and likelihood calculations */
 void viterbi(struct wfsa *fsm, struct observations *o, int algorithm);
 void forward_fsm(struct wfsa *fsm, struct observations *o, int algorithm);
-void backward(struct wfsa *fsm, struct observations *o, int algorithm);
+void forward_hmm(struct hmm *hmm, struct observations *o, int algorithm);
+void backward_fsm(struct wfsa *fsm, struct observations *o, int algorithm);
+void backward_hmm(struct hmm *hmm, struct observations *o, int algorithm);
 
 /* Main training functions */
 PROB train_viterbi(struct wfsa *fsm, struct observations *o, int maxiterations, PROB maxdelta);
+PROB train_viterbi_hmm(struct hmm *hmm, struct observations *o, int maxiterations, PROB maxdelta);
 PROB train_baum_welch(struct wfsa *fsm, struct observations *o, int maxiterations, PROB maxdelta, int vb);
 PROB train_bw(struct wfsa *fsm, struct observations *o, int maxiterations, PROB maxdelta);
 PROB train_viterbi_bw(struct wfsa *fsm, struct observations *o);

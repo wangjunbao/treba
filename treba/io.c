@@ -89,7 +89,7 @@ void hmm_print(struct hmm *hmm) {
 	    thisprob = *HMM_TRANSITION_PROB(hmm,i,j);
 	    if (thisprob > SMRZERO_LOG) {
 		if (g_output_format != FORMAT_REAL || output_convert(thisprob) > 0) {
-		    printf("%i => %i %.17g\n", i,j, output_convert(thisprob));
+		    printf("%i > %i %.17g\n", i,j, output_convert(thisprob));
 		}
 	    }
 	}
