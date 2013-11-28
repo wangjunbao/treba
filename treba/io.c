@@ -59,7 +59,7 @@ char *file_to_mem(char *name) {
     FILE    *infile;
     size_t    numbytes;
     char *buffer;
-    infile = fopen(name, "r");
+    infile = fopen(name, "rb");
     if(infile == NULL) {
         fprintf(stderr,"Error opening file '%s'\n",name);
         return NULL;
