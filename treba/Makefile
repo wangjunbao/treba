@@ -14,11 +14,11 @@ CFLAGS = -O3 -ffast-math
 ifeq ($(CUDA),1)
 	CUDA_INSTALL_PATH ?= /usr/local/cuda
 	CFLAGS += -DUSE_CUDA
-	LFLAGS = -lm -lpthread -L$(CUDA_INSTALL_PATH)/lib -lcudart -lgsl
+	LFLAGS = -lm -lpthread -L$(CUDA_INSTALL_PATH)/lib -lcudart -lgsl -lgslcblas
 	TREBADEPS = treba.o dffa.o gibbs.o observations.o io.o treba.h treba_cuda.o fastlogexp.h
 	TREBACMD = $(CC) $(CFLAGS) -DUSE_CUDA -o treba treba_cuda.o treba.o dffa.o gibbs.o observations.o io.o $(LFLAGS)
 else
-	LFLAGS = -lm -lpthread -lgsl
+	LFLAGS = -lm -lpthread -lgsl -lgslcblas
 	TREBADEPS = treba.o dffa.o gibbs.o observations.o io.o treba.h fastlogexp.h
 	TREBACMD = $(CC) $(CFLAGS) -o treba treba.o dffa.o gibbs.o observations.o io.o $(LFLAGS)
 endif
