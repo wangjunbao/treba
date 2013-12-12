@@ -23,11 +23,13 @@ The three top finishers used mainly a
   * EM/Baum-Welch
   * A state-merging algorithm
 
-in their participation (Verwer, et al., 2013). As *treba* contains all three, the results can be reproduced (roughly, because of a random component in Gibbs sampling/EM). Also, other strategies and parameters can be explored. One can compare the output with PAutomac competitor results [http://ai.cs.umbc.edu/icgi2012/challenge/Pautomac/results.php.htm here].
+in their participation (Verwer, et al., 2013). 
+
+As *treba* contains these algorithms (and more), the results can be reproduced (roughly, because of a random component in Gibbs sampling/EM). Also, other strategies and parameters can be explored. One can compare the output with PAutomac competitor results [http://ai.cs.umbc.edu/icgi2012/challenge/Pautomac/results.php.htm here].
 
 = Running treba on PAutomaC data =
 
-There is a wrapper perl-script to make it easy to run treba on the PAutomaC problems.  The PAutomaC data set in the Downloads directory contains both the script and the data. Running the script presumes access to the PAutomaC files from the tarball in the Download page, and *treba* installed in the system path.
+There is a wrapper perl-script to make it easy to run treba on the PAutomaC problems.  The PAutomaC data set `treba-pautomac.tar.gz` in the Downloads directory contains both the script and the data. Running the script presumes access to the PAutomaC files from the tarball, and *treba* installed in the system path.
 
 The perl-wrapper accepts two arguments:
 
@@ -36,6 +38,8 @@ The perl-wrapper accepts two arguments:
 }}}
 
 The first argument is the path to the PAutomaC files (the files are available on the download page). The second argument is the training arguments to pass to treba.
+
+Below are some examples of basic usage.
 
 ==Example 1 (state merging)==
 
