@@ -39,7 +39,7 @@ The perl-wrapper accepts two arguments:
 
 The first argument is the path to the PAutomaC files. The second argument is the training arguments to pass to treba.
 
-Below are some examples of basic usage.
+After extracting the file `treba-pautomac.tar.gz` and entering the directory `treba-pautomac` you should be able to run the below examples of basic usage, assuming you have treba installed in the system path.
 
 ==Example 1 (state merging)==
 
