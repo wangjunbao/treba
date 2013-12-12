@@ -13,7 +13,7 @@ In short, the task was as follows:
   * Step 1: from the training examples, infer a PFA/HMM
   * Step 2: assign probabilities to sequences in the test set using this PFA/HMM
 
-<img src="http://treba.googlecode.com/svn/wiki/pautomacexample.png" alt="pautomac workflow" width="50%"/>
+<img src="http://treba.googlecode.com/svn/wiki/pautomacexample.png" alt="pautomac workflow" width="600px"/>
 
 Of course, the learned structure doesn't have to be a PFA/HMM since we only need to assign probabilities to sequences. However, the best-performing results all used some type of finite state machine.
 
