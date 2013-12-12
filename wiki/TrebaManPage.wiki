@@ -1,3 +1,4 @@
+#summary Copy of the man page
 #labels Featured
 <pre>
 treba(1)                                                              treba(1)
