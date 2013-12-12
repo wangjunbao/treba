@@ -49,7 +49,7 @@ For example, running
 ./pautomac.perl pautomac-data 2 --train=merge --alpha=0.3
 }}}
 
-would run *treba* on problem number *2*, using a state-merging algorithm (ALERGIA), with the alpha parameter set to 0.3, and assuming the pautomac files lie in `./pautomac`.
+would run *treba* on problem number *2*, using a state-merging algorithm (ALERGIA), with the alpha parameter set to 0.3, and assuming the pautomac files lie in `pautomac-data` under the current directory.
 
 The output should look like:
 
