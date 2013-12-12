@@ -25,7 +25,7 @@ The three top finishers used mainly a
 
 in their participation (Verwer, et al., 2013). 
 
-As *treba* contains these algorithms (and more), the results can be reproduced (roughly, because of a random component in Gibbs sampling/EM). Also, other strategies and parameters can be explored. One can compare the output with PAutomac competitor results [http://ai.cs.umbc.edu/icgi2012/challenge/Pautomac/results.php.htm here].
+As *treba* contains these algorithms (and more), the results can be reproduced (roughly, because of a random component in Gibbs sampling/EM). Also, other strategies and parameters can be explored. One can compare the output with PAutomaC competitor results [http://ai.cs.umbc.edu/icgi2012/challenge/Pautomac/results.php.htm here].
 
 = Running treba on PAutomaC data =
 
@@ -34,22 +34,22 @@ There is a wrapper perl-script to make it easy to run treba on the PAutomaC prob
 The perl-wrapper accepts two arguments:
 
 {{{
-./pautomac.perl PAUTOMACPATH TREBAARGUMENTS
+./pautomac.perl PAUTOMACPATH PROBLEMNUMBER TREBAARGUMENTS
 }}}
 
-The first argument is the path to the PAutomaC files (the files are available on the download page). The second argument is the training arguments to pass to treba.
+The first argument is the path to the PAutomaC files. The second argument is the training arguments to pass to treba.
 
 Below are some examples of basic usage.
 
 ==Example 1 (state merging)==
 
-For example, running 
+For example, running
 
 {{{
 ./pautomac.perl pautomac-data 2 --train=merge --alpha=0.3
 }}}
 
-would run *treba* on problem number *2*, using a state-merging algorithm (ALERGIA), with the alpha parameter set to 0.3, and assuming the pautomac files lie in `pautomac-data` under the current directory.
+would run *treba* on problem number *2*, using a state-merging algorithm (ALERGIA), with the alpha parameter set to 0.3, and assuming the PAutomaC files lie in `pautomac-data` under the current directory.
 
 The output should look like:
 
