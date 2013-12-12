@@ -42,7 +42,7 @@ The first argument is the path to the PAutomaC files (the files are available on
 For example, running 
 
 {{{
-./pautomac.perl ./pautomac-data 2 --train=merge --alpha=0.3
+./pautomac.perl pautomac-data 2 --train=merge --alpha=0.3
 }}}
 
 would run *treba* on problem number *2*, using a state-merging algorithm (ALERGIA), with the alpha parameter set to 0.3, and assuming the pautomac files lie in `./pautomac`.
@@ -65,7 +65,7 @@ You can compare these results to the perplexity results by the competitors [http
 The following command would run problem 30, using Baum-Welch, assuming a PFA of 12 states:
 
 {{{
-./pautomac.perl ./pautomac-data 30 --train=bw --initialize=12
+./pautomac.perl pautomac-data 30 --train=bw --initialize=12
 }}}
 
 A typical output would be:
@@ -84,7 +84,7 @@ Perplexity: 22.9325256667927
 The following would run problem *14* using a Gibbs sampler (with the NVIDIA CUDA GPU code), assuming a 15-state HMM, otherwise with default parameters:
 
 {{{
-./pautomac-data 14 --train=gs -x 10000 --cuda --initialize=15 --hmm
+./pautomac.perl pautomac-data 14 --train=gs -x 10000 --cuda --initialize=15 --hmm
 }}}
 
 If you don't have CUDA support compiled or don't have an NVIDIA GPU, just drop the --cuda flag. With CUDA, the process should take just a few seconds, and a few minutes without.
